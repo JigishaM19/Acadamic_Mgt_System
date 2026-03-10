@@ -1,0 +1,13 @@
+/node_modules
+/server/node_modules
+/client/node_modules
+
+.env
+/server/.env
+/client/.env
+
+TaskPrompt.txt
+student_demo_data.xlsx
+teacher_demo_data.xlsx
+teacher_demoData_script.py
+student_demoData_script.py
