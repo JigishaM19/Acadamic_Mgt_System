@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
+import Pagination, { usePagination } from '../../components/Pagination';
 import { FiAlertTriangle, FiUpload, FiDownload, FiEdit2, FiSearch, FiUsers } from 'react-icons/fi';
 import { FaHourglass } from 'react-icons/fa';
 
@@ -16,6 +17,7 @@ const HodStudents = () => {
     const [uploading, setUploading] = useState(false);
     const [exporting, setExporting] = useState(false);
     const fileInputRef = useRef(null);
+    const { currentPage, pageSize, handlePageChange, handlePageSizeChange, resetPage, paginateData } = usePagination(30);
 
     useEffect(() => {
         fetchClasses();
@@ -23,6 +25,7 @@ const HodStudents = () => {
 
     useEffect(() => {
         fetchStudents();
+        resetPage();
     }, [filters]);
 
     const fetchClasses = async () => {
@@ -270,50 +273,58 @@ const HodStudents = () => {
                 {loading ? (
                     <div className="loading"><div className="spinner"></div></div>
                 ) : (
-                    <div className="table-container">
-                        <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>Student Name</th>
-                                    <th>Username</th>
-                                    <th>Current Class</th>
-                                    <th>Year</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {students.length === 0 ? (
+                    <Pagination
+                        currentPage={currentPage}
+                        totalItems={students.length}
+                        pageSize={pageSize}
+                        onPageChange={handlePageChange}
+                        onPageSizeChange={handlePageSizeChange}
+                    >
+                        <div className="table-container">
+                            <table className="table">
+                                <thead>
                                     <tr>
-                                        <td colSpan="5" className="empty-state">
-                                            <div className="empty-icon"><FiUsers size={48} /></div>
-                                            <h3>No students found</h3>
-                                        </td>
+                                        <th>Student Name</th>
+                                        <th>Username</th>
+                                        <th>Current Class</th>
+                                        <th>Year</th>
+                                        <th>Actions</th>
                                     </tr>
-                                ) : (
-                                    students.map(student => (
-                                        <tr key={student._id}>
-                                            <td><strong>{student.fullName}</strong></td>
-                                            <td>{student.username}</td>
-                                            <td>
-                                                <span className={`badge ${student.classId ? 'badge-primary' : 'badge-warning'}`}>
-                                                    {student.classId?.name || 'Not Assigned'}
-                                                </span>
-                                            </td>
-                                            <td>{student.classId?.year || student.year || '-'}</td>
-                                            <td>
-                                                <button
-                                                    className="btn btn-sm btn-secondary"
-                                                    onClick={() => handleEditClass(student)}
-                                                >
-                                                    <FiEdit2 style={{ marginRight: '4px' }} /> Edit Class
-                                                </button>
+                                </thead>
+                                <tbody>
+                                    {students.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" className="empty-state">
+                                                <div className="empty-icon"><FiUsers size={48} /></div>
+                                                <h3>No students found</h3>
                                             </td>
                                         </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                    ) : (
+                                        paginateData(students).map(student => (
+                                            <tr key={student._id}>
+                                                <td><strong>{student.fullName}</strong></td>
+                                                <td>{student.username}</td>
+                                                <td>
+                                                    <span className={`badge ${student.classId ? 'badge-primary' : 'badge-warning'}`}>
+                                                        {student.classId?.name || 'Not Assigned'}
+                                                    </span>
+                                                </td>
+                                                <td>{student.classId?.year || student.year || '-'}</td>
+                                                <td>
+                                                    <button
+                                                        className="btn btn-sm btn-secondary"
+                                                        onClick={() => handleEditClass(student)}
+                                                    >
+                                                        <FiEdit2 style={{ marginRight: '4px' }} /> Edit Class
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Pagination>
                 )}
             </div>
 

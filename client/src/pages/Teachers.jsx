@@ -3,6 +3,7 @@ import api from '../services/api';
 import { FiSearch, FiEdit2, FiTrash2, FiKey, FiUser, FiFolder, FiCheckCircle, FiX } from 'react-icons/fi';
 import { FaChalkboardTeacher, FaLock, FaExclamationTriangle } from 'react-icons/fa';
 import Modal from '../components/Modal';
+import Pagination, { usePagination } from '../components/Pagination';
 
 const Teachers = () => {
     const [teachers, setTeachers] = useState([]);
@@ -10,6 +11,7 @@ const Teachers = () => {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [deptFilter, setDeptFilter] = useState('');
+    const { currentPage, pageSize, handlePageChange, handlePageSizeChange, resetPage, paginateData } = usePagination(30);
     const [modalOpen, setModalOpen] = useState(false);
     const [roleModalOpen, setRoleModalOpen] = useState(false);
     const [bulkModalOpen, setBulkModalOpen] = useState(false);
@@ -54,6 +56,11 @@ const Teachers = () => {
         const matchesDept = !deptFilter || t.departmentId?._id === deptFilter;
         return matchesSearch && matchesDept;
     });
+
+    const paginatedTeachers = paginateData(filteredTeachers);
+
+    // Reset page when filters change
+    useEffect(() => { resetPage(); }, [search, deptFilter]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -226,53 +233,61 @@ const Teachers = () => {
                     </div>
                 </div>
 
-                <div className="table-container">
-                    <table className="table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Username</th>
-                                <th>Department</th>
-                                <th>Roles</th>
-                                <th>Contact</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredTeachers.map((teacher) => (
-                                <tr key={teacher._id}>
-                                    <td><strong>{teacher.fullName}</strong></td>
-                                    <td>{teacher.username}</td>
-                                    <td>{teacher.departmentId?.name || '-'}</td>
-                                    <td>
-                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                            {teacher.roles?.map((r) => (
-                                                <span key={r} className={`badge ${r === 'hod' ? 'badge-warning' : r === 'classcoordinator' ? 'badge-info' : 'badge-primary'}`}>
-                                                    {roleLabels[r] || r}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </td>
-                                    <td>{teacher.phone || teacher.email || '-'}</td>
-                                    <td>
-                                        <div className="actions-cell">
-                                            <button className="btn-icon" onClick={() => handleEdit(teacher)} title="Edit"><FiEdit2 /></button>
-                                            <button className="btn-icon" onClick={() => openRoleModal(teacher)} title="Manage Roles"><FiUser /></button>
-                                            <button className="btn-icon" onClick={() => handleResetPassword(teacher._id)} title="Reset Password"><FiKey /></button>
-                                            <button className="btn-icon" onClick={() => handleDelete(teacher._id)} title="Delete"><FiTrash2 /></button>
-                                        </div>
-                                    </td>
+                <Pagination
+                    currentPage={currentPage}
+                    totalItems={filteredTeachers.length}
+                    pageSize={pageSize}
+                    onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
+                >
+                    <div className="table-container">
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Username</th>
+                                    <th>Department</th>
+                                    <th>Roles</th>
+                                    <th>Contact</th>
+                                    <th>Actions</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {filteredTeachers.length === 0 && (
-                        <div className="empty-state">
-                            <div className="empty-icon"><FaChalkboardTeacher size={48} /></div>
-                            <h3>No teachers found</h3>
-                        </div>
-                    )}
-                </div>
+                            </thead>
+                            <tbody>
+                                {paginatedTeachers.map((teacher) => (
+                                    <tr key={teacher._id}>
+                                        <td><strong>{teacher.fullName}</strong></td>
+                                        <td>{teacher.username}</td>
+                                        <td>{teacher.departmentId?.name || '-'}</td>
+                                        <td>
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                {teacher.roles?.map((r) => (
+                                                    <span key={r} className={`badge ${r === 'hod' ? 'badge-warning' : r === 'classcoordinator' ? 'badge-info' : 'badge-primary'}`}>
+                                                        {roleLabels[r] || r}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td>{teacher.phone || teacher.email || '-'}</td>
+                                        <td>
+                                            <div className="actions-cell">
+                                                <button className="btn-icon" onClick={() => handleEdit(teacher)} title="Edit"><FiEdit2 /></button>
+                                                <button className="btn-icon" onClick={() => openRoleModal(teacher)} title="Manage Roles"><FiUser /></button>
+                                                <button className="btn-icon" onClick={() => handleResetPassword(teacher._id)} title="Reset Password"><FiKey /></button>
+                                                <button className="btn-icon" onClick={() => handleDelete(teacher._id)} title="Delete"><FiTrash2 /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {filteredTeachers.length === 0 && (
+                            <div className="empty-state">
+                                <div className="empty-icon"><FaChalkboardTeacher size={48} /></div>
+                                <h3>No teachers found</h3>
+                            </div>
+                        )}
+                    </div>
+                </Pagination>
             </div>
 
             {/* Add/Edit Modal */}

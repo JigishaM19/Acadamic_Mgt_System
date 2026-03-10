@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import Modal from '../components/Modal';
+import Pagination, { usePagination } from '../components/Pagination';
 
 const Users = () => {
     const [users, setUsers] = useState([]);
@@ -9,6 +10,7 @@ const Users = () => {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('');
+    const { currentPage, pageSize, handlePageChange, handlePageSizeChange, resetPage, paginateData } = usePagination(30);
     const [modalOpen, setModalOpen] = useState(false);
     const [bulkModalOpen, setBulkModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
@@ -55,6 +57,11 @@ const Users = () => {
         const matchesRole = !roleFilter || user.role === roleFilter;
         return matchesSearch && matchesRole;
     });
+
+    const paginatedUsers = paginateData(filteredUsers);
+
+    // Reset page when filters change
+    useEffect(() => { resetPage(); }, [search, roleFilter]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -220,51 +227,59 @@ const Users = () => {
                     </div>
                 </div>
 
-                <div className="table-container">
-                    <table className="table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Username</th>
-                                <th>Role</th>
-                                <th>Department</th>
-                                <th>Class</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredUsers.map((user) => (
-                                <tr key={user._id}>
-                                    <td><strong>{user.fullName || `${user.firstName} ${user.lastName}`}</strong></td>
-                                    <td>{user.username}</td>
-                                    <td><span className="badge badge-primary">{formatRole(user.role)}</span></td>
-                                    <td>{user.departmentId?.name || '-'}</td>
-                                    <td>{user.classId?.name || '-'}</td>
-                                    <td>
-                                        <span className={`badge ${user.isActive ? 'badge-success' : 'badge-danger'}`}>
-                                            {user.isActive ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div className="actions-cell">
-                                            <button className="btn-icon" onClick={() => handleEdit(user)} title="Edit">Edit</button>
-                                            <button className="btn-icon" onClick={() => handleResetPassword(user._id)} title="Reset Password">Reset</button>
-                                            <button className="btn-icon" onClick={() => handleDelete(user._id)} title="Delete">Delete</button>
-                                        </div>
-                                    </td>
+                <Pagination
+                    currentPage={currentPage}
+                    totalItems={filteredUsers.length}
+                    pageSize={pageSize}
+                    onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
+                >
+                    <div className="table-container">
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Username</th>
+                                    <th>Role</th>
+                                    <th>Department</th>
+                                    <th>Class</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {filteredUsers.length === 0 && (
-                        <div className="empty-state">
-                            <div className="empty-icon"></div>
-                            <h3>No users found</h3>
-                            <p>Try adjusting your search or filters</p>
-                        </div>
-                    )}
-                </div>
+                            </thead>
+                            <tbody>
+                                {paginatedUsers.map((user) => (
+                                    <tr key={user._id}>
+                                        <td><strong>{user.fullName || `${user.firstName} ${user.lastName}`}</strong></td>
+                                        <td>{user.username}</td>
+                                        <td><span className="badge badge-primary">{formatRole(user.role)}</span></td>
+                                        <td>{user.departmentId?.name || '-'}</td>
+                                        <td>{user.classId?.name || '-'}</td>
+                                        <td>
+                                            <span className={`badge ${user.isActive ? 'badge-success' : 'badge-danger'}`}>
+                                                {user.isActive ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div className="actions-cell">
+                                                <button className="btn-icon" onClick={() => handleEdit(user)} title="Edit">Edit</button>
+                                                <button className="btn-icon" onClick={() => handleResetPassword(user._id)} title="Reset Password">Reset</button>
+                                                <button className="btn-icon" onClick={() => handleDelete(user._id)} title="Delete">Delete</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {filteredUsers.length === 0 && (
+                            <div className="empty-state">
+                                <div className="empty-icon"></div>
+                                <h3>No users found</h3>
+                                <p>Try adjusting your search or filters</p>
+                            </div>
+                        )}
+                    </div>
+                </Pagination>
             </div>
 
             {/* Add/Edit User Modal */}

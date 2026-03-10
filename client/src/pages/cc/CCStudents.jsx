@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { FiClipboard, FiPhone, FiMail } from 'react-icons/fi';
 import { FaUserGraduate } from 'react-icons/fa';
+import Pagination, { usePagination } from '../../components/Pagination';
 
 const CCStudents = () => {
     const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const { currentPage, pageSize, handlePageChange, handlePageSizeChange, resetPage, paginateData } = usePagination(30);
 
     useEffect(() => {
         fetchStudents();
@@ -39,6 +41,11 @@ const CCStudents = () => {
         student.username?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const paginatedStudents = paginateData(filteredStudents);
+
+    // Reset page when search changes
+    useEffect(() => { resetPage(); }, [searchTerm]);
+
     if (loading) {
         return (
             <div className="loading">
@@ -68,54 +75,62 @@ const CCStudents = () => {
                     <span><FiClipboard style={{ marginRight: '4px' }} /> Total Students: <strong>{students.length}</strong></span>
                 </div>
 
-                <div className="table-container">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>Roll No</th>
-                                <th>Name</th>
-                                <th>Department</th>
-                                <th>Class</th>
-                                <th>Contact</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredStudents.map((student, index) => (
-                                <tr key={student._id}>
-                                    <td>
-                                        <span style={{ fontFamily: 'monospace', fontWeight: '500' }}>
-                                            {index + 1}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div style={{ fontWeight: '500' }}>
-                                            {student.fullName || `${student.firstName} ${student.lastName}`}
-                                        </div>
-                                    </td>
-                                    <td>{student.departmentId?.name || 'N/A'}</td>
-                                    <td>
-                                        <span className="badge" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
-                                            {student.classId?.name || 'N/A'}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div style={{ fontSize: '13px' }}>
-                                            {student.phone && <div><FiPhone style={{ marginRight: '4px' }} /> {student.phone}</div>}
-                                            {student.email && <div><FiMail style={{ marginRight: '4px' }} /> {student.email}</div>}
-                                            {!student.phone && !student.email && <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
-                                        </div>
-                                    </td>
+                <Pagination
+                    currentPage={currentPage}
+                    totalItems={filteredStudents.length}
+                    pageSize={pageSize}
+                    onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
+                >
+                    <div className="table-container">
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Roll No</th>
+                                    <th>Name</th>
+                                    <th>Department</th>
+                                    <th>Class</th>
+                                    <th>Contact</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {filteredStudents.length === 0 && (
-                    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        {searchTerm ? 'No students found matching your search' : 'No students in this class'}
+                            </thead>
+                            <tbody>
+                                {paginatedStudents.map((student, index) => (
+                                    <tr key={student._id}>
+                                        <td>
+                                            <span style={{ fontFamily: 'monospace', fontWeight: '500' }}>
+                                                {(currentPage - 1) * pageSize + index + 1}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div style={{ fontWeight: '500' }}>
+                                                {student.fullName || `${student.firstName} ${student.lastName}`}
+                                            </div>
+                                        </td>
+                                        <td>{student.departmentId?.name || 'N/A'}</td>
+                                        <td>
+                                            <span className="badge" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
+                                                {student.classId?.name || 'N/A'}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div style={{ fontSize: '13px' }}>
+                                                {student.phone && <div><FiPhone style={{ marginRight: '4px' }} /> {student.phone}</div>}
+                                                {student.email && <div><FiMail style={{ marginRight: '4px' }} /> {student.email}</div>}
+                                                {!student.phone && !student.email && <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                )}
+
+                    {filteredStudents.length === 0 && (
+                        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            {searchTerm ? 'No students found matching your search' : 'No students in this class'}
+                        </div>
+                    )}
+                </Pagination>
             </div>
         </div>
     );

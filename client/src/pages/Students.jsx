@@ -3,6 +3,7 @@ import api from '../services/api';
 import { FiSearch, FiEdit2, FiTrash2, FiKey, FiFolder, FiCheckCircle } from 'react-icons/fi';
 import { FaUserGraduate, FaLock, FaExclamationTriangle } from 'react-icons/fa';
 import Modal from '../components/Modal';
+import Pagination, { usePagination } from '../components/Pagination';
 
 const Students = () => {
     const [students, setStudents] = useState([]);
@@ -12,6 +13,7 @@ const Students = () => {
     const [search, setSearch] = useState('');
     const [deptFilter, setDeptFilter] = useState('');
     const [yearFilter, setYearFilter] = useState('');
+    const { currentPage, pageSize, handlePageChange, handlePageSizeChange, resetPage, paginateData } = usePagination(30);
     const [modalOpen, setModalOpen] = useState(false);
     const [bulkModalOpen, setBulkModalOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
@@ -52,6 +54,11 @@ const Students = () => {
         const matchesYear = !yearFilter || student.year === parseInt(yearFilter);
         return matchesSearch && matchesDept && matchesYear;
     });
+
+    const paginatedStudents = paginateData(filteredStudents);
+
+    // Reset page when filters change
+    useEffect(() => { resetPage(); }, [search, deptFilter, yearFilter]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -208,46 +215,54 @@ const Students = () => {
                     </div>
                 </div>
 
-                <div className="table-container">
-                    <table className="table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Username</th>
-                                <th>Department</th>
-                                <th>Class</th>
-                                <th>Year</th>
-                                <th>Parent</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredStudents.map((student) => (
-                                <tr key={student._id}>
-                                    <td><strong>{student.fullName}</strong></td>
-                                    <td>{student.username}</td>
-                                    <td>{student.departmentId?.name || '-'}</td>
-                                    <td>{student.classId?.name || '-'}</td>
-                                    <td>{student.year || '-'}</td>
-                                    <td>{student.parentId?.username || '-'}</td>
-                                    <td>
-                                        <div className="actions-cell">
-                                            <button className="btn-icon" onClick={() => handleEdit(student)} title="Edit"><FiEdit2 /></button>
-                                            <button className="btn-icon" onClick={() => handleResetPassword(student._id)} title="Reset Password"><FiKey /></button>
-                                            <button className="btn-icon" onClick={() => handleDelete(student._id)} title="Delete"><FiTrash2 /></button>
-                                        </div>
-                                    </td>
+                <Pagination
+                    currentPage={currentPage}
+                    totalItems={filteredStudents.length}
+                    pageSize={pageSize}
+                    onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
+                >
+                    <div className="table-container">
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Username</th>
+                                    <th>Department</th>
+                                    <th>Class</th>
+                                    <th>Year</th>
+                                    <th>Parent</th>
+                                    <th>Actions</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {filteredStudents.length === 0 && (
-                        <div className="empty-state">
-                            <div className="empty-icon"><FaUserGraduate size={48} /></div>
-                            <h3>No students found</h3>
-                        </div>
-                    )}
-                </div>
+                            </thead>
+                            <tbody>
+                                {paginatedStudents.map((student) => (
+                                    <tr key={student._id}>
+                                        <td><strong>{student.fullName}</strong></td>
+                                        <td>{student.username}</td>
+                                        <td>{student.departmentId?.name || '-'}</td>
+                                        <td>{student.classId?.name || '-'}</td>
+                                        <td>{student.year || '-'}</td>
+                                        <td>{student.parentId?.username || '-'}</td>
+                                        <td>
+                                            <div className="actions-cell">
+                                                <button className="btn-icon" onClick={() => handleEdit(student)} title="Edit"><FiEdit2 /></button>
+                                                <button className="btn-icon" onClick={() => handleResetPassword(student._id)} title="Reset Password"><FiKey /></button>
+                                                <button className="btn-icon" onClick={() => handleDelete(student._id)} title="Delete"><FiTrash2 /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {filteredStudents.length === 0 && (
+                            <div className="empty-state">
+                                <div className="empty-icon"><FaUserGraduate size={48} /></div>
+                                <h3>No students found</h3>
+                            </div>
+                        )}
+                    </div>
+                </Pagination>
             </div>
 
             {/* Add/Edit Modal */}

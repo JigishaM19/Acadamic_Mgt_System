@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
+import Pagination, { usePagination } from '../../components/Pagination';
 import { FiPlus, FiEdit2, FiSearch, FiUsers, FiUser, FiRefreshCw, FiXCircle, FiFolder, FiCheckCircle } from 'react-icons/fi';
 import { FaBook } from 'react-icons/fa';
 
@@ -25,6 +26,7 @@ const HodClasses = () => {
     const [loadingStudents, setLoadingStudents] = useState(false);
     const [activeBatchTab, setActiveBatchTab] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
+    const { currentPage, pageSize, handlePageChange, handlePageSizeChange, paginateData } = usePagination(30);
 
     useEffect(() => {
         fetchClasses();
@@ -184,69 +186,77 @@ const HodClasses = () => {
                 {loading ? (
                     <div className="loading"><div className="spinner"></div></div>
                 ) : (
-                    <div className="table-container">
-                        <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>Class Name</th>
-                                    <th>Year</th>
-                                    <th>Coordinator</th>
-                                    <th>Students</th>
-                                    <th>Capacity</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {classes.length === 0 ? (
+                    <Pagination
+                        currentPage={currentPage}
+                        totalItems={classes.length}
+                        pageSize={pageSize}
+                        onPageChange={handlePageChange}
+                        onPageSizeChange={handlePageSizeChange}
+                    >
+                        <div className="table-container">
+                            <table className="table">
+                                <thead>
                                     <tr>
-                                        <td colSpan="6" className="empty-state">
-                                            <div className="empty-icon"><FaBook size={48} /></div>
-                                            <h3>No classes found</h3>
-                                        </td>
+                                        <th>Class Name</th>
+                                        <th>Year</th>
+                                        <th>Coordinator</th>
+                                        <th>Students</th>
+                                        <th>Capacity</th>
+                                        <th>Actions</th>
                                     </tr>
-                                ) : (
-                                    classes.map(cls => (
-                                        <tr key={cls._id}>
-                                            <td><strong>{cls.name}</strong></td>
-                                            <td>{cls.year}{cls.year === 1 ? 'st' : cls.year === 2 ? 'nd' : cls.year === 3 ? 'rd' : 'th'} Year</td>
-                                            <td>
-                                                {cls.coordinatorId?.fullName || (
-                                                    <span className="no-data">Not assigned</span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <span className={`badge ${cls.studentCount > 0 ? 'badge-success' : 'badge-secondary'}`}>
-                                                    {cls.studentCount || 0} students
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span className="badge badge-info">
-                                                    Max: {cls.maxCapacity || 75}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <div className="actions-cell">
-                                                    <button
-                                                        className="btn btn-sm btn-secondary"
-                                                        onClick={() => handleViewStudents(cls)}
-                                                        title="View Students"
-                                                    >
-                                                        <FiUsers style={{ marginRight: '4px' }} /> View
-                                                    </button>
-                                                    <button
-                                                        className="btn btn-sm btn-secondary"
-                                                        onClick={() => handleEdit(cls)}
-                                                    >
-                                                        <FiEdit2 style={{ marginRight: '4px' }} /> Edit
-                                                    </button>
-                                                </div>
+                                </thead>
+                                <tbody>
+                                    {classes.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="6" className="empty-state">
+                                                <div className="empty-icon"><FaBook size={48} /></div>
+                                                <h3>No classes found</h3>
                                             </td>
                                         </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                    ) : (
+                                        paginateData(classes).map(cls => (
+                                            <tr key={cls._id}>
+                                                <td><strong>{cls.name}</strong></td>
+                                                <td>{cls.year}{cls.year === 1 ? 'st' : cls.year === 2 ? 'nd' : cls.year === 3 ? 'rd' : 'th'} Year</td>
+                                                <td>
+                                                    {cls.coordinatorId?.fullName || (
+                                                        <span className="no-data">Not assigned</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${cls.studentCount > 0 ? 'badge-success' : 'badge-secondary'}`}>
+                                                        {cls.studentCount || 0} students
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span className="badge badge-info">
+                                                        Max: {cls.maxCapacity || 75}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div className="actions-cell">
+                                                        <button
+                                                            className="btn btn-sm btn-secondary"
+                                                            onClick={() => handleViewStudents(cls)}
+                                                            title="View Students"
+                                                        >
+                                                            <FiUsers style={{ marginRight: '4px' }} /> View
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-sm btn-secondary"
+                                                            onClick={() => handleEdit(cls)}
+                                                        >
+                                                            <FiEdit2 style={{ marginRight: '4px' }} /> Edit
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Pagination>
                 )}
             </div>
 

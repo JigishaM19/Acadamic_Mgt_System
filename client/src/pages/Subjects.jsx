@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { FiEdit2, FiTrash2, FiPlus, FiBookOpen, FiFolder, FiCheckCircle } from 'react-icons/fi';
 import Modal from '../components/Modal';
+import Pagination, { usePagination } from '../components/Pagination';
 
 const Subjects = () => {
     const [subjects, setSubjects] = useState([]);
@@ -13,6 +14,7 @@ const Subjects = () => {
     const [bulkFile, setBulkFile] = useState(null);
     const [bulkResult, setBulkResult] = useState(null);
     const [uploading, setUploading] = useState(false);
+    const { currentPage, pageSize, handlePageChange, handlePageSizeChange, paginateData } = usePagination(30);
     const [formData, setFormData] = useState({
         name: '',
         code: '',
@@ -164,75 +166,83 @@ const Subjects = () => {
                     </div>
                 </div>
 
-                <div className="table-container">
-                    <table className="table">
-                        <thead>
-                            <tr>
-                                <th>Subject Name</th>
-                                <th>Code</th>
-                                <th>Year</th>
-                                <th>Semester</th>
-                                <th>Type</th>
-                                <th>Practical Name</th>
-                                <th>Practical Code</th>
-                                <th>Department</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {subjects.length === 0 ? (
+                <Pagination
+                    currentPage={currentPage}
+                    totalItems={subjects.length}
+                    pageSize={pageSize}
+                    onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
+                >
+                    <div className="table-container">
+                        <table className="table">
+                            <thead>
                                 <tr>
-                                    <td colSpan="9" className="empty-state">
-                                        <div className="empty-icon"><FiBookOpen size={48} /></div>
-                                        <h3>No subjects found</h3>
-                                        <p>Add subjects to get started</p>
-                                    </td>
+                                    <th>Subject Name</th>
+                                    <th>Code</th>
+                                    <th>Year</th>
+                                    <th>Semester</th>
+                                    <th>Type</th>
+                                    <th>Practical Name</th>
+                                    <th>Practical Code</th>
+                                    <th>Department</th>
+                                    <th>Actions</th>
                                 </tr>
-                            ) : (
-                                subjects.map((subject) => (
-                                    <tr key={subject._id}>
-                                        <td><strong>{subject.name}</strong></td>
-                                        <td>
-                                            <span className="badge badge-primary">{subject.code}</span>
-                                        </td>
-                                        <td>
-                                            <span className="badge badge-info">Year {subject.year}</span>
-                                        </td>
-                                        <td>
-                                            <span className="badge badge-secondary">SEM-{subject.semester}</span>
-                                        </td>
-                                        <td>
-                                            <span className={`badge ${subject.type === 'practical' ? 'badge-warning' : subject.type === 'both' ? 'badge-info' : 'badge-success'}`}>
-                                                {subject.type}
-                                            </span>
-                                        </td>
-                                        <td>{subject.practicalName || '-'}</td>
-                                        <td>
-                                            {subject.practicalCode ? (
-                                                <span className="badge badge-warning">{subject.practicalCode}</span>
-                                            ) : '-'}
-                                        </td>
-                                        <td>{subject.departmentId?.name || 'All Departments'}</td>
-                                        <td className="actions-cell">
-                                            <button
-                                                className="btn btn-sm btn-secondary"
-                                                onClick={() => openEditModal(subject)}
-                                            >
-                                                <FiEdit2 />
-                                            </button>
-                                            <button
-                                                className="btn btn-sm btn-danger"
-                                                onClick={() => handleDelete(subject._id)}
-                                            >
-                                                <FiTrash2 />
-                                            </button>
+                            </thead>
+                            <tbody>
+                                {subjects.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="9" className="empty-state">
+                                            <div className="empty-icon"><FiBookOpen size={48} /></div>
+                                            <h3>No subjects found</h3>
+                                            <p>Add subjects to get started</p>
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                ) : (
+                                    paginateData(subjects).map((subject) => (
+                                        <tr key={subject._id}>
+                                            <td><strong>{subject.name}</strong></td>
+                                            <td>
+                                                <span className="badge badge-primary">{subject.code}</span>
+                                            </td>
+                                            <td>
+                                                <span className="badge badge-info">Year {subject.year}</span>
+                                            </td>
+                                            <td>
+                                                <span className="badge badge-secondary">SEM-{subject.semester}</span>
+                                            </td>
+                                            <td>
+                                                <span className={`badge ${subject.type === 'practical' ? 'badge-warning' : subject.type === 'both' ? 'badge-info' : 'badge-success'}`}>
+                                                    {subject.type}
+                                                </span>
+                                            </td>
+                                            <td>{subject.practicalName || '-'}</td>
+                                            <td>
+                                                {subject.practicalCode ? (
+                                                    <span className="badge badge-warning">{subject.practicalCode}</span>
+                                                ) : '-'}
+                                            </td>
+                                            <td>{subject.departmentId?.name || 'All Departments'}</td>
+                                            <td className="actions-cell">
+                                                <button
+                                                    className="btn btn-sm btn-secondary"
+                                                    onClick={() => openEditModal(subject)}
+                                                >
+                                                    <FiEdit2 />
+                                                </button>
+                                                <button
+                                                    className="btn btn-sm btn-danger"
+                                                    onClick={() => handleDelete(subject._id)}
+                                                >
+                                                    <FiTrash2 />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Pagination>
             </div>
 
             {/* Add/Edit Modal */}
