@@ -44,9 +44,56 @@ const CCAttendance = () => {
         return 'critical';
     };
 
-    const handleCardClick = (subject, batchId) => {
-        const batchParam = batchId ? `?batchId=${batchId}` : '';
-        navigate(`/cc/attendance/${encodeURIComponent(subject)}${batchParam}`);
+    // Group attendance data by subject (merge batches into one card)
+    const groupedData = (() => {
+        const map = new Map();
+        for (const item of attendanceData) {
+            const key = item.subject;
+            if (!map.has(key)) {
+                map.set(key, {
+                    subject: item.subject,
+                    totalStudents: item.totalStudents,
+                    totalLectures: item.totalLectures,
+                    avgAttendance: item.avgAttendance,
+                    status: item.status,
+                    lastAttendanceDate: item.lastAttendanceDate,
+                    hasBatches: !!item.batchName,
+                    batchCount: item.batchName ? 1 : 0,
+                    batchNames: item.batchName ? [item.batchName] : [],
+                    // Track weighted average
+                    _totalPresent: item.avgAttendance * item.totalLectures,
+                    _totalLectures: item.totalLectures
+                });
+            } else {
+                const existing = map.get(key);
+                existing.totalStudents += item.totalStudents;
+                existing.totalLectures += item.totalLectures;
+                existing._totalPresent += item.avgAttendance * item.totalLectures;
+                existing._totalLectures += item.totalLectures;
+                // Recalculate weighted average attendance
+                existing.avgAttendance = existing._totalLectures > 0
+                    ? Math.round(existing._totalPresent / existing._totalLectures)
+                    : 0;
+                // Recalculate status
+                existing.status = existing.avgAttendance >= 75 ? 'good' : existing.avgAttendance >= 60 ? 'warning' : 'low';
+                if (item.batchName && !existing.batchNames.includes(item.batchName)) {
+                    existing.batchNames.push(item.batchName);
+                    existing.batchCount++;
+                }
+                existing.hasBatches = existing.hasBatches || !!item.batchName;
+                // Keep the latest attendance date
+                if (item.lastAttendanceDate) {
+                    if (!existing.lastAttendanceDate || new Date(item.lastAttendanceDate) > new Date(existing.lastAttendanceDate)) {
+                        existing.lastAttendanceDate = item.lastAttendanceDate;
+                    }
+                }
+            }
+        }
+        return Array.from(map.values());
+    })();
+
+    const handleCardClick = (subject) => {
+        navigate(`/cc/attendance/${encodeURIComponent(subject)}`);
     };
 
     if (loading) {
@@ -69,18 +116,18 @@ const CCAttendance = () => {
             </div>
 
             <div className="year-cards-grid" style={{ marginTop: '24px' }}>
-                {attendanceData.length > 0 ? (
-                    attendanceData.map((item, index) => (
+                {groupedData.length > 0 ? (
+                    groupedData.map((item, index) => (
                         <div
                             key={index}
                             className="year-card attendance-card"
                             style={{ cursor: 'pointer' }}
-                            onClick={() => handleCardClick(item.subject, item.batchId)}
+                            onClick={() => handleCardClick(item.subject)}
                         >
                             <div className="year-header">
                                 <span className="year-number">{item.subject}</span>
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                    {item.batchName && (
+                                    {item.hasBatches && (
                                         <span className="badge" style={{
                                             background: 'rgba(245, 158, 11, 0.15)',
                                             color: '#f59e0b',
@@ -89,7 +136,7 @@ const CCAttendance = () => {
                                             fontSize: '0.75rem',
                                             fontWeight: '600'
                                         }}>
-                                            {item.batchName}
+                                            {item.batchCount} Batch{item.batchCount > 1 ? 'es' : ''}
                                         </span>
                                     )}
                                     <span className={`attendance-badge ${getStatusClass(item.status)}`}>

@@ -448,6 +448,191 @@ router.put('/attendance/:id', async (req, res) => {
     }
 });
 
+// @route   GET /api/cc/attendance/:subject/export
+// @desc    Export attendance sheet as Excel file for CC
+router.get('/attendance/:subject/export', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const { subject } = req.params;
+        const { batchId } = req.query;
+        const classId = req.classId;
+        const decodedSubject = decodeURIComponent(subject);
+
+        // Get class details
+        const classDoc = await Class.findById(classId).populate('departmentId');
+
+        let students;
+        let batchInfo = null;
+
+        if (batchId) {
+            const batch = classDoc?.batches?.find(b => b._id.toString() === batchId);
+            if (batch) {
+                batchInfo = { _id: batch._id, name: batch.name };
+                students = await User.find({
+                    _id: { $in: batch.studentIds },
+                    role: 'student'
+                }).select('fullName firstName lastName fatherName username rollNo').sort({ lastName: 1 });
+            } else {
+                students = [];
+            }
+        } else {
+            students = await User.find({
+                role: 'student',
+                classId
+            }).select('fullName firstName lastName fatherName username rollNo').sort({ lastName: 1 });
+        }
+
+        // Get attendance records
+        const attendanceFilter = { classId, subject: decodedSubject };
+        if (batchId) {
+            attendanceFilter.batchId = batchId;
+        } else {
+            attendanceFilter.$or = [{ batchId: null }, { batchId: { $exists: false } }];
+        }
+
+        const attendanceRecords = await Attendance.find(attendanceFilter)
+            .populate('timeSlotId')
+            .populate('teacherId', 'fullName')
+            .sort({ date: 1 });
+
+        // Get faculty name from attendance records or timetable
+        let facultyName = 'N/A';
+        if (attendanceRecords.length > 0 && attendanceRecords[0].teacherId) {
+            facultyName = attendanceRecords[0].teacherId.fullName || 'N/A';
+        } else {
+            const ttEntry = await Timetable.findOne({ classId, subject: decodedSubject }).populate('teacherId', 'fullName');
+            if (ttEntry?.teacherId) {
+                facultyName = ttEntry.teacherId.fullName || 'N/A';
+            }
+        }
+
+        // Build Excel using ExcelJS
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Attendance');
+
+        const totalCols = 5 + attendanceRecords.length;
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        // --- Header rows (no borders) ---
+        // Row 1: Title
+        const titleRow = ws.addRow([]);
+        titleRow.getCell(6).value = 'LECTURE ATTENDANCE SHEET';
+        titleRow.getCell(6).font = { bold: true, size: 14 };
+
+        // Row 2: Department
+        ws.addRow([`Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
+        // Row 3: Subject
+        ws.addRow([`Subject : ${decodedSubject}`]).font = { bold: true };
+        // Row 4: Class
+        ws.addRow([`Class : ${classDoc?.name || 'N/A'}${batchInfo ? ` - ${batchInfo.name}` : ''}`]).font = { bold: true };
+        // Row 5: Faculty
+        ws.addRow([`Faculty : ${facultyName}`]).font = { bold: true };
+
+        // Row 6: Empty gap row
+        ws.addRow([]);
+
+        // Row 7: Column headers - Dates
+        const headerValues1 = ['R.No', 'Last Name', 'First Name', 'Middle Name', 'Batch'];
+        for (const record of attendanceRecords) {
+            const dateStr = new Date(record.date).toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+            headerValues1.push(dateStr);
+        }
+        const headerRow1 = ws.addRow(headerValues1);
+        headerRow1.eachCell((cell) => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        });
+
+        // Row 8: Column headers - Time slots
+        const headerValues2 = ['', '', '', '', ''];
+        for (const record of attendanceRecords) {
+            const slot = record.timeSlotId;
+            headerValues2.push(slot ? `${slot.startTime} - ${slot.endTime}` : '');
+        }
+        const headerRow2 = ws.addRow(headerValues2);
+        headerRow2.eachCell((cell, colNumber) => {
+            cell.border = allBorders;
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.font = { size: 9, italic: true };
+        });
+
+        // Student rows
+        students.forEach((student, idx) => {
+            // Determine batch name for student
+            let studentBatch = '';
+            if (classDoc?.batches) {
+                for (const batch of classDoc.batches) {
+                    if (batch.studentIds.some(sid => sid.toString() === student._id.toString())) {
+                        studentBatch = batch.name;
+                        break;
+                    }
+                }
+            }
+
+            const rowValues = [
+                idx + 1,
+                student.lastName || '',
+                student.firstName || '',
+                student.fatherName || '',
+                studentBatch
+            ];
+
+            for (const record of attendanceRecords) {
+                const studentRecord = record.records?.find(r =>
+                    r.studentId.toString() === student._id.toString()
+                );
+                rowValues.push(studentRecord?.status === 'present' ? 'P' : 'A');
+            }
+
+            const dataRow = ws.addRow(rowValues);
+            dataRow.eachCell((cell, colNumber) => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // Color P/A cells (columns after the first 5)
+                if (colNumber > 5) {
+                    const val = cell.value;
+                    if (val === 'P') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }; // Light green
+                        cell.font = { color: { argb: 'FF006100' }, bold: true };
+                    } else if (val === 'A') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }; // Light red
+                        cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+                    }
+                }
+            });
+        });
+
+        // Set column widths
+        ws.getColumn(1).width = 6;    // R.No
+        ws.getColumn(2).width = 16;   // Last Name
+        ws.getColumn(3).width = 16;   // First Name
+        ws.getColumn(4).width = 16;   // Middle Name
+        ws.getColumn(5).width = 12;   // Batch
+        for (let i = 6; i <= totalCols; i++) {
+            ws.getColumn(i).width = 14;
+        }
+
+        // Write to buffer and send
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        const batchSuffix = batchInfo ? `_${batchInfo.name}` : '';
+        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}${batchSuffix}_Attendance.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('CC export attendance error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // ============================================
 // TESTS
 // ============================================

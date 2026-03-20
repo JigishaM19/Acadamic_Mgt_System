@@ -31,9 +31,45 @@ const TeacherAttendance = () => {
         });
     };
 
-    const handleCardClick = (classId, subject, batchId) => {
-        const batchParam = batchId ? `?batchId=${batchId}` : '';
-        navigate(`/teacher/attendance/${classId}/${encodeURIComponent(subject)}${batchParam}`);
+    // Group attendance data by classId + subject (merge batches into one card)
+    const groupedData = (() => {
+        const map = new Map();
+        for (const item of attendanceData) {
+            const key = `${item.classId}-${item.subject}`;
+            if (!map.has(key)) {
+                map.set(key, {
+                    classId: item.classId,
+                    className: item.className,
+                    year: item.year,
+                    department: item.department,
+                    subject: item.subject,
+                    totalStudents: item.totalStudents,
+                    lastAttendanceDate: item.lastAttendanceDate,
+                    hasBatches: !!item.batchName,
+                    batchCount: item.batchName ? 1 : 0,
+                    batchNames: item.batchName ? [item.batchName] : []
+                });
+            } else {
+                const existing = map.get(key);
+                existing.totalStudents += item.totalStudents;
+                if (item.batchName && !existing.batchNames.includes(item.batchName)) {
+                    existing.batchNames.push(item.batchName);
+                    existing.batchCount++;
+                }
+                existing.hasBatches = existing.hasBatches || !!item.batchName;
+                // Keep the latest attendance date
+                if (item.lastAttendanceDate) {
+                    if (!existing.lastAttendanceDate || new Date(item.lastAttendanceDate) > new Date(existing.lastAttendanceDate)) {
+                        existing.lastAttendanceDate = item.lastAttendanceDate;
+                    }
+                }
+            }
+        }
+        return Array.from(map.values());
+    })();
+
+    const handleCardClick = (classId, subject) => {
+        navigate(`/teacher/attendance/${classId}/${encodeURIComponent(subject)}`);
     };
 
     if (loading) {
@@ -56,18 +92,18 @@ const TeacherAttendance = () => {
             </div>
 
             <div className="year-cards-grid" style={{ marginTop: '24px' }}>
-                {attendanceData.length > 0 ? (
-                    attendanceData.map((item, index) => (
+                {groupedData.length > 0 ? (
+                    groupedData.map((item, index) => (
                         <div
                             key={index}
                             className="year-card attendance-card"
                             style={{ cursor: 'pointer' }}
-                            onClick={() => handleCardClick(item.classId, item.subject, item.batchId)}
+                            onClick={() => handleCardClick(item.classId, item.subject)}
                         >
                             <div className="year-header">
                                 <span className="year-number">{item.className}</span>
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                    {item.batchName && (
+                                    {item.hasBatches && (
                                         <span className="badge" style={{
                                             background: 'rgba(245, 158, 11, 0.15)',
                                             color: '#f59e0b',
@@ -76,7 +112,7 @@ const TeacherAttendance = () => {
                                             fontSize: '0.75rem',
                                             fontWeight: '600'
                                         }}>
-                                            {item.batchName}
+                                            {item.batchCount} Batch{item.batchCount > 1 ? 'es' : ''}
                                         </span>
                                     )}
                                     <span className="badge" style={{
@@ -135,7 +171,7 @@ const TeacherAttendance = () => {
                                 style={{ width: '100%', marginTop: '8px' }}
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    handleCardClick(item.classId, item.subject, item.batchId);
+                                    handleCardClick(item.classId, item.subject);
                                 }}
                             >
                                 Manage Attendance

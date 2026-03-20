@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight } from 'react-icons/fi';
 
-const PAGE_SIZE_OPTIONS = [30, 50, 70, 100];
+const PAGE_SIZE_OPTIONS = [10, 30, 50, 70, 100];
 
 const Pagination = ({ currentPage, totalItems, pageSize, onPageChange, onPageSizeChange, children }) => {
     const totalPages = Math.ceil(totalItems / pageSize);
