@@ -1291,4 +1291,287 @@ router.get('/timeslots', async (req, res) => {
     }
 });
 
+// ============================================
+// DEFAULTERS
+// ============================================
+
+// @route   GET /api/teacher/defaulters
+// @desc    Get all subjects teacher is teaching (grouped by class+subject)
+router.get('/defaulters', async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+
+        const timetableEntries = await Timetable.find({ teacherId })
+            .populate({ path: 'classId', populate: { path: 'departmentId' } });
+
+        // Group by class and subject
+        const classSubjectMap = new Map();
+        for (const entry of timetableEntries) {
+            if (!entry.classId) continue;
+            const key = `${entry.classId._id}-${entry.subject}`;
+            if (!classSubjectMap.has(key)) {
+                classSubjectMap.set(key, {
+                    classId: entry.classId._id,
+                    className: entry.classId.name,
+                    year: entry.classId.year,
+                    department: entry.classId.departmentId?.name || 'N/A',
+                    subject: entry.subject
+                });
+            }
+        }
+
+        const classSubjects = Array.from(classSubjectMap.values());
+
+        // Get avg attendance for each
+        for (const cs of classSubjects) {
+            const records = await Attendance.find({
+                classId: cs.classId,
+                subject: cs.subject,
+                teacherId
+            });
+
+            let totalPresent = 0;
+            let totalRecords = 0;
+            for (const record of records) {
+                for (const r of record.records) {
+                    totalRecords++;
+                    if (r.status === 'present') totalPresent++;
+                }
+            }
+            cs.avgAttendance = totalRecords > 0 ? Math.round((totalPresent / totalRecords) * 100) : 0;
+            cs.totalLectures = records.length;
+        }
+
+        res.json(classSubjects);
+    } catch (error) {
+        console.error('Teacher defaulters error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/teacher/defaulters/:classId/:subject
+// @desc    Get student attendance for a specific subject taught by teacher
+router.get('/defaulters/:classId/:subject', async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+        const { classId, subject } = req.params;
+        const { percentageRange } = req.query;
+        const decodedSubject = decodeURIComponent(subject);
+
+        // Verify teacher teaches this
+        const timetableEntry = await Timetable.findOne({
+            teacherId,
+            classId,
+            subject: decodedSubject
+        });
+        if (!timetableEntry) {
+            return res.status(403).json({ message: 'You do not teach this class-subject combination' });
+        }
+
+        const classDoc = await Class.findById(classId).populate('departmentId');
+
+        // Get students
+        const students = await User.find({
+            role: 'student',
+            classId
+        })
+            .select('fullName username rollNo')
+            .sort({ rollNo: 1 });
+
+        // Get attendance records for this subject by this teacher
+        const attendanceRecords = await Attendance.find({
+            classId,
+            subject: decodedSubject,
+            teacherId
+        });
+
+        const result = [];
+        for (const student of students) {
+            const sid = student._id.toString();
+            let totalLectures = 0;
+            let attended = 0;
+
+            for (const record of attendanceRecords) {
+                const sr = record.records.find(r => r.studentId.toString() === sid);
+                if (sr) {
+                    totalLectures++;
+                    if (sr.status === 'present') attended++;
+                }
+            }
+
+            const percentage = totalLectures > 0 ? Math.round((attended / totalLectures) * 100) : 0;
+
+            // Filter by percentage range
+            if (percentageRange) {
+                const [min, max] = percentageRange.split('-').map(Number);
+                if (percentage < min || percentage > max) continue;
+            }
+
+            // Batch name
+            let batchName = '';
+            if (classDoc?.batches) {
+                for (const batch of classDoc.batches) {
+                    if (batch.studentIds.some(id => id.toString() === sid)) {
+                        batchName = batch.name;
+                        break;
+                    }
+                }
+            }
+
+            result.push({
+                studentId: student._id,
+                rollNo: student.rollNo || '',
+                fullName: student.fullName,
+                username: student.username,
+                batch: batchName,
+                attendancePercentage: percentage
+            });
+        }
+
+        // Get teacher name
+        const teacher = await User.findById(teacherId).select('fullName');
+
+        res.json({
+            students: result,
+            className: classDoc?.name || '',
+            year: classDoc?.year || '',
+            department: classDoc?.departmentId?.name || '',
+            subject: decodedSubject,
+            facultyName: teacher?.fullName || 'N/A'
+        });
+    } catch (error) {
+        console.error('Teacher defaulters detail error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/teacher/defaulters/:classId/:subject/export
+// @desc    Export teacher defaulters list as Excel sheet
+router.get('/defaulters/:classId/:subject/export', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const teacherId = req.teacherId;
+        const { classId, subject } = req.params;
+        const { percentageRange } = req.query;
+        const decodedSubject = decodeURIComponent(subject);
+
+        // Verify teacher teaches this
+        const timetableEntry = await Timetable.findOne({
+            teacherId,
+            classId,
+            subject: decodedSubject
+        });
+        if (!timetableEntry) {
+            return res.status(403).json({ message: 'You do not teach this class-subject combination' });
+        }
+
+        const classDoc = await Class.findById(classId).populate('departmentId');
+        const teacher = await User.findById(teacherId).select('fullName');
+
+        const students = await User.find({
+            role: 'student',
+            classId
+        })
+            .select('fullName username rollNo')
+            .sort({ rollNo: 1 });
+
+        const attendanceRecords = await Attendance.find({
+            classId,
+            subject: decodedSubject,
+            teacherId
+        });
+
+        const studentData = [];
+        for (const student of students) {
+            const sid = student._id.toString();
+            let totalLectures = 0;
+            let attended = 0;
+
+            for (const record of attendanceRecords) {
+                const sr = record.records.find(r => r.studentId.toString() === sid);
+                if (sr) {
+                    totalLectures++;
+                    if (sr.status === 'present') attended++;
+                }
+            }
+
+            const percentage = totalLectures > 0 ? Math.round((attended / totalLectures) * 100) : 0;
+
+            if (percentageRange) {
+                const [min, max] = percentageRange.split('-').map(Number);
+                if (percentage < min || percentage > max) continue;
+            }
+
+            let batchName = '';
+            if (classDoc?.batches) {
+                for (const batch of classDoc.batches) {
+                    if (batch.studentIds.some(id => id.toString() === sid)) {
+                        batchName = batch.name;
+                        break;
+                    }
+                }
+            }
+
+            studentData.push({
+                rollNo: student.rollNo || '',
+                fullName: student.fullName,
+                batch: batchName,
+                percentage
+            });
+        }
+
+        // Build Excel
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Defaulters');
+
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        // Header rows
+        const titleRow = ws.addRow(['DEFAULTERS REPORT']);
+        titleRow.getCell(1).font = { bold: true, size: 14 };
+        ws.addRow([`Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
+        ws.addRow([`Class: ${classDoc?.name || 'N/A'}`]).font = { bold: true };
+        ws.addRow([`Year: ${classDoc?.year || 'N/A'}`]).font = { bold: true };
+        ws.addRow([`Subject: ${decodedSubject}`]).font = { bold: true };
+        ws.addRow([`Faculty: ${teacher?.fullName || 'N/A'}`]).font = { bold: true };
+        ws.addRow([]);
+
+        // Table header
+        const headerRow = ws.addRow(['Roll No', 'Student Name', 'Batch', 'Attendance %']);
+        headerRow.eachCell((cell) => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        });
+
+        // Data rows
+        for (const s of studentData) {
+            const row = ws.addRow([s.rollNo, s.fullName, s.batch, `${s.percentage}%`]);
+            row.eachCell((cell, colNumber) => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                if (colNumber === 4 && s.percentage < 75) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+                    cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+                }
+            });
+        }
+
+        ws.getColumn(1).width = 10;
+        ws.getColumn(2).width = 30;
+        ws.getColumn(3).width = 15;
+        ws.getColumn(4).width = 18;
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_Defaulters_Report.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('Teacher defaulters export error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 module.exports = router;

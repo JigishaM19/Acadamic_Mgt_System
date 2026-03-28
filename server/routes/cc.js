@@ -986,4 +986,264 @@ router.put('/complaints/:id/resolve', async (req, res) => {
     }
 });
 
+// ============================================
+// DEFAULTERS
+// ============================================
+
+// @route   GET /api/cc/defaulters
+// @desc    Get all students with subject-wise and overall attendance
+router.get('/defaulters', async (req, res) => {
+    try {
+        const classId = req.classId;
+        const { percentageRange, subject } = req.query;
+
+        // Get students in class
+        const students = await User.find({
+            role: 'student',
+            classId
+        })
+            .select('fullName username rollNo')
+            .sort({ rollNo: 1 });
+
+        // Get class details
+        const classDoc = await Class.findById(classId).populate('departmentId');
+
+        // Get all subjects from timetable
+        const timetableSubjects = await Timetable.find({ classId }).distinct('subject');
+
+        // Get all attendance records
+        const allAttendance = await Attendance.find({ classId });
+
+        // Calculate subject-wise and overall attendance
+        const result = [];
+        for (const student of students) {
+            const sid = student._id.toString();
+            let totalLectures = 0;
+            let totalAttended = 0;
+            const subjectAttendance = {};
+
+            for (const subj of timetableSubjects) {
+                const subjRecords = allAttendance.filter(r => r.subject === subj);
+                let subjTotal = 0;
+                let subjAttended = 0;
+
+                for (const record of subjRecords) {
+                    const sr = record.records.find(r => r.studentId.toString() === sid);
+                    if (sr) {
+                        subjTotal++;
+                        if (sr.status === 'present') subjAttended++;
+                    }
+                }
+
+                const subjPercentage = subjTotal > 0 ? Math.round((subjAttended / subjTotal) * 100) : 0;
+                subjectAttendance[subj] = subjPercentage;
+                totalLectures += subjTotal;
+                totalAttended += subjAttended;
+            }
+
+            const overallPercentage = totalLectures > 0 ? Math.round((totalAttended / totalLectures) * 100) : 0;
+
+            // Apply percentage filter
+            if (percentageRange) {
+                const [min, max] = percentageRange.split('-').map(Number);
+                if (subject) {
+                    // Filter by subject percentage
+                    const subjPct = subjectAttendance[subject] || 0;
+                    if (subjPct < min || subjPct > max) continue;
+                } else {
+                    if (overallPercentage < min || overallPercentage > max) continue;
+                }
+            }
+
+            // If subject filter without percentage, just filter rows with that subject
+            if (subject && !percentageRange) {
+                // No extra filter, show all
+            }
+
+            // Determine batch name
+            let batchName = '';
+            if (classDoc?.batches) {
+                for (const batch of classDoc.batches) {
+                    if (batch.studentIds.some(id => id.toString() === sid)) {
+                        batchName = batch.name;
+                        break;
+                    }
+                }
+            }
+
+            result.push({
+                studentId: student._id,
+                rollNo: student.rollNo || '',
+                fullName: student.fullName,
+                username: student.username,
+                subjectAttendance,
+                batch: batchName,
+                overallPercentage
+            });
+        }
+
+        res.json({
+            students: result,
+            subjects: timetableSubjects,
+            className: classDoc?.name || '',
+            year: classDoc?.year || '',
+            department: classDoc?.departmentId?.name || ''
+        });
+    } catch (error) {
+        console.error('CC defaulters error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/cc/defaulters/export
+// @desc    Export CC defaulters list as Excel sheet
+router.get('/defaulters/export', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const classId = req.classId;
+        const { percentageRange, subject } = req.query;
+
+        const classDoc = await Class.findById(classId).populate('departmentId');
+
+        const students = await User.find({
+            role: 'student',
+            classId
+        })
+            .select('fullName username rollNo')
+            .sort({ rollNo: 1 });
+
+        const timetableSubjects = await Timetable.find({ classId }).distinct('subject');
+        const allAttendance = await Attendance.find({ classId });
+
+        // Build student data
+        const studentData = [];
+        for (const student of students) {
+            const sid = student._id.toString();
+            let totalLectures = 0;
+            let totalAttended = 0;
+            const subjectAttendance = {};
+
+            for (const subj of timetableSubjects) {
+                const subjRecords = allAttendance.filter(r => r.subject === subj);
+                let subjTotal = 0;
+                let subjAttended = 0;
+
+                for (const record of subjRecords) {
+                    const sr = record.records.find(r => r.studentId.toString() === sid);
+                    if (sr) {
+                        subjTotal++;
+                        if (sr.status === 'present') subjAttended++;
+                    }
+                }
+
+                const subjPercentage = subjTotal > 0 ? Math.round((subjAttended / subjTotal) * 100) : 0;
+                subjectAttendance[subj] = subjPercentage;
+                totalLectures += subjTotal;
+                totalAttended += subjAttended;
+            }
+
+            const overallPercentage = totalLectures > 0 ? Math.round((totalAttended / totalLectures) * 100) : 0;
+
+            if (percentageRange) {
+                const [min, max] = percentageRange.split('-').map(Number);
+                if (subject) {
+                    const subjPct = subjectAttendance[subject] || 0;
+                    if (subjPct < min || subjPct > max) continue;
+                } else {
+                    if (overallPercentage < min || overallPercentage > max) continue;
+                }
+            }
+
+            let batchName = '';
+            if (classDoc?.batches) {
+                for (const batch of classDoc.batches) {
+                    if (batch.studentIds.some(id => id.toString() === sid)) {
+                        batchName = batch.name;
+                        break;
+                    }
+                }
+            }
+
+            studentData.push({
+                rollNo: student.rollNo || '',
+                fullName: student.fullName,
+                batch: batchName,
+                subjectAttendance,
+                overallPercentage
+            });
+        }
+
+        // Build Excel
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Defaulters');
+
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        // Header rows
+        const titleRow = ws.addRow(['DEFAULTERS REPORT']);
+        titleRow.getCell(1).font = { bold: true, size: 14 };
+        ws.addRow([`Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
+        ws.addRow([`Class: ${classDoc?.name || 'N/A'}`]).font = { bold: true };
+        ws.addRow([`Year: ${classDoc?.year || 'N/A'}`]).font = { bold: true };
+        ws.addRow([]);
+
+        // Table header
+        const headerValues = ['Roll No', 'Student Name', 'Batch'];
+        for (const subj of timetableSubjects) {
+            headerValues.push(subj);
+        }
+        headerValues.push('Overall %');
+
+        const headerRow = ws.addRow(headerValues);
+        headerRow.eachCell((cell) => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        });
+
+        // Data rows
+        for (const s of studentData) {
+            const rowValues = [s.rollNo, s.fullName, s.batch];
+            for (const subj of timetableSubjects) {
+                rowValues.push(`${s.subjectAttendance[subj] || 0}%`);
+            }
+            rowValues.push(`${s.overallPercentage}%`);
+
+            const row = ws.addRow(rowValues);
+            row.eachCell((cell, colNumber) => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // Red highlight for percentage cells below 75%
+                if (colNumber > 3) {
+                    const pctStr = cell.value?.toString().replace('%', '') || '0';
+                    const pctVal = parseInt(pctStr);
+                    if (pctVal < 75) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+                        cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+                    }
+                }
+            });
+        }
+
+        // Column widths
+        ws.getColumn(1).width = 10;
+        ws.getColumn(2).width = 30;
+        ws.getColumn(3).width = 15;
+        for (let i = 4; i <= 3 + timetableSubjects.length + 1; i++) {
+            ws.getColumn(i).width = 18;
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="CC_Defaulters_Report.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('CC defaulters export error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 module.exports = router;

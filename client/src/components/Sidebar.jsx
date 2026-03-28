@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import {
     FiHome, FiUsers, FiBook, FiCalendar, FiClock, FiGrid,
     FiFileText, FiClipboard, FiMessageSquare, FiSettings,
-    FiUser, FiBookOpen, FiLayers, FiMapPin, FiInfo
+    FiUser, FiBookOpen, FiLayers, FiMapPin, FiInfo, FiAlertTriangle
 } from 'react-icons/fi';
 import { FaBullhorn } from 'react-icons/fa';
 import appLogo from '../assets/logo.svg';
@@ -33,6 +33,7 @@ const Sidebar = ({ collapsed, mobileOpen, onMobileClose }) => {
     const hodNavItems = [
         { path: '/hod/dashboard', icon: <FiHome />, label: 'Dashboard' },
         { path: '/hod/attendance', icon: <FiClipboard />, label: 'Attendance' },
+        { path: '/hod/defaulters', icon: <FiAlertTriangle />, label: 'Defaulters' },
         { path: '/hod/students', icon: <FiUsers />, label: 'Students' },
         { path: '/hod/teachers', icon: <FiUser />, label: 'Teachers' },
         { path: '/hod/subjects', icon: <FiBook />, label: 'Subjects' },
@@ -50,6 +51,7 @@ const Sidebar = ({ collapsed, mobileOpen, onMobileClose }) => {
     const teacherNavItems = [
         { path: '/teacher/dashboard', icon: <FiHome />, label: 'Dashboard' },
         { path: '/teacher/attendance', icon: <FiClipboard />, label: 'Attendance' },
+        { path: '/teacher/defaulters', icon: <FiAlertTriangle />, label: 'Defaulters' },
         { path: '/teacher/tests', icon: <FiFileText />, label: 'Tests' },
         { path: '/teacher/timetable', icon: <FiCalendar />, label: 'Timetable' },
         { path: '/teacher/leave-requests', icon: <FiFileText />, label: 'Leave Requests' },
@@ -90,6 +92,7 @@ const Sidebar = ({ collapsed, mobileOpen, onMobileClose }) => {
         { path: '/cc/dashboard', icon: <FiHome />, label: 'Dashboard' },
         { path: '/cc/timetable', icon: <FiCalendar />, label: 'Timetable' },
         { path: '/cc/attendance', icon: <FiClipboard />, label: 'Attendance' },
+        { path: '/cc/defaulters', icon: <FiAlertTriangle />, label: 'Defaulters' },
         { path: '/cc/tests', icon: <FiFileText />, label: 'Test Scores' },
         { path: '/cc/students', icon: <FiUsers />, label: 'Students' },
         { path: '/cc/leave-requests', icon: <FiFileText />, label: 'Leave Requests' },

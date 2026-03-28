@@ -33,6 +33,7 @@ import HodComplaints from './pages/hod/HodComplaints';
 import HodLectures from './pages/hod/HodLectures';
 import HodSubjects from './pages/hod/HodSubjects';
 import HodAnnouncements from './pages/hod/HodAnnouncements';
+import HodDefaulters from './pages/hod/HodDefaulters';
 
 // Teacher Pages
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
@@ -44,6 +45,7 @@ import TeacherTimetable from './pages/teacher/TeacherTimetable';
 import TeacherLeaveRequests from './pages/teacher/TeacherLeaveRequests';
 import TeacherComplaints from './pages/teacher/TeacherComplaints';
 import TeacherAnnouncements from './pages/teacher/TeacherAnnouncements';
+import TeacherDefaulters from './pages/teacher/TeacherDefaulters';
 
 // Student Pages
 import StudentDashboard from './pages/student/StudentDashboard';
@@ -65,6 +67,7 @@ import CCStudents from './pages/cc/CCStudents';
 import CCLeaveRequests from './pages/cc/CCLeaveRequests';
 import CCComplaints from './pages/cc/CCComplaints';
 import CCAnnouncements from './pages/cc/CCAnnouncements';
+import CCDefaulters from './pages/cc/CCDefaulters';
 
 import './index.css';
 
@@ -226,6 +229,7 @@ function App() {
             <Route path="hod/leave-requests" element={<HodRoute><HodLeaveRequests /></HodRoute>} />
             <Route path="hod/complaints" element={<HodRoute><HodComplaints /></HodRoute>} />
             <Route path="hod/announcements" element={<HodRoute><HodAnnouncements /></HodRoute>} />
+            <Route path="hod/defaulters" element={<HodRoute><HodDefaulters /></HodRoute>} />
             <Route path="hod/about-college" element={<HodRoute><AboutCollegePage /></HodRoute>} />
 
             {/* Teacher Routes */}
@@ -238,6 +242,7 @@ function App() {
             <Route path="teacher/leave-requests" element={<TeacherRoute><TeacherLeaveRequests /></TeacherRoute>} />
             <Route path="teacher/complaints" element={<TeacherRoute><TeacherComplaints /></TeacherRoute>} />
             <Route path="teacher/announcements" element={<TeacherRoute><TeacherAnnouncements /></TeacherRoute>} />
+            <Route path="teacher/defaulters" element={<TeacherRoute><TeacherDefaulters /></TeacherRoute>} />
             <Route path="teacher/about-college" element={<TeacherRoute><AboutCollegePage /></TeacherRoute>} />
 
             {/* Class Coordinator Routes */}
@@ -251,6 +256,7 @@ function App() {
             <Route path="cc/leave-requests" element={<CCRoute><CCLeaveRequests /></CCRoute>} />
             <Route path="cc/complaints" element={<CCRoute><CCComplaints /></CCRoute>} />
             <Route path="cc/announcements" element={<CCRoute><CCAnnouncements /></CCRoute>} />
+            <Route path="cc/defaulters" element={<CCRoute><CCDefaulters /></CCRoute>} />
             <Route path="cc/about-college" element={<CCRoute><AboutCollegePage /></CCRoute>} />
 
             {/* Student Routes */}

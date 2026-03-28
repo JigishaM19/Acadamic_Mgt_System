@@ -1802,4 +1802,251 @@ router.put('/complaints/:id', async (req, res) => {
     }
 });
 
+// ============================================
+// DEFAULTERS
+// ============================================
+
+// @route   GET /api/hod/defaulters
+// @desc    Get all students in department with overall attendance percentage
+router.get('/defaulters', async (req, res) => {
+    try {
+        const departmentId = req.departmentId;
+        const { year, classId, percentageRange } = req.query;
+
+        // Get classes in department
+        const classFilter = { departmentId };
+        if (year) classFilter.year = parseInt(year);
+
+        const deptClasses = await Class.find(classFilter);
+        let classIds = deptClasses.map(c => c._id);
+
+        if (classId) {
+            const validClass = deptClasses.find(c => c._id.toString() === classId);
+            if (!validClass) {
+                return res.status(403).json({ message: 'Class not in your department' });
+            }
+            classIds = [classId];
+        }
+
+        // Get students
+        const students = await User.find({
+            role: 'student',
+            classId: { $in: classIds }
+        })
+            .select('fullName username classId rollNo')
+            .populate({ path: 'classId', populate: { path: 'departmentId' } })
+            .sort({ rollNo: 1 });
+
+        // Get all attendance records for these classes
+        const allAttendance = await Attendance.find({ classId: { $in: classIds } });
+
+        // Calculate overall attendance for each student
+        const result = [];
+        for (const student of students) {
+            const sid = student._id.toString();
+            let totalLectures = 0;
+            let attended = 0;
+
+            for (const record of allAttendance) {
+                if (record.classId.toString() !== (student.classId?._id || student.classId)?.toString()) continue;
+                const sr = record.records.find(r => r.studentId.toString() === sid);
+                if (sr) {
+                    totalLectures++;
+                    if (sr.status === 'present') attended++;
+                }
+            }
+
+            const overallPercentage = totalLectures > 0 ? Math.round((attended / totalLectures) * 100) : 0;
+
+            // Apply percentage filter
+            if (percentageRange) {
+                const [min, max] = percentageRange.split('-').map(Number);
+                if (overallPercentage < min || overallPercentage > max) continue;
+            }
+
+            // Determine batch name
+            let batchName = '';
+            if (student.classId?.batches) {
+                for (const batch of student.classId.batches) {
+                    if (batch.studentIds.some(id => id.toString() === sid)) {
+                        batchName = batch.name;
+                        break;
+                    }
+                }
+            }
+
+            result.push({
+                studentId: student._id,
+                rollNo: student.rollNo || '',
+                fullName: student.fullName,
+                username: student.username,
+                year: student.classId?.year || '',
+                className: student.classId?.name || '',
+                batch: batchName,
+                overallPercentage
+            });
+        }
+
+        // Sort results by year ascending then rollNo ascending
+        result.sort((a, b) => {
+            if (a.year !== b.year) return (a.year || 0) - (b.year || 0);
+            return (a.rollNo || 999999) - (b.rollNo || 999999);
+        });
+
+        // Get class list for filter
+        const classList = deptClasses.map(c => ({ _id: c._id, name: c.name, year: c.year }));
+
+        res.json({ students: result, classes: classList });
+    } catch (error) {
+        console.error('HOD defaulters error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/hod/defaulters/export
+// @desc    Export defaulters list as Excel sheet
+router.get('/defaulters/export', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const departmentId = req.departmentId;
+        const { year, classId, percentageRange } = req.query;
+
+        // Get department name
+        const Department = require('../models/Department');
+        const dept = await Department.findById(departmentId);
+
+        // Get classes in department
+        const classFilter = { departmentId };
+        if (year) classFilter.year = parseInt(year);
+
+        const deptClasses = await Class.find(classFilter);
+        let classIds = deptClasses.map(c => c._id);
+        let filterClassName = 'All Classes';
+        let filterYear = year ? `Year ${year}` : 'All Years';
+
+        if (classId) {
+            const validClass = deptClasses.find(c => c._id.toString() === classId);
+            if (validClass) {
+                classIds = [classId];
+                filterClassName = validClass.name;
+                filterYear = `Year ${validClass.year}`;
+            }
+        }
+
+        // Get students
+        const students = await User.find({
+            role: 'student',
+            classId: { $in: classIds }
+        })
+            .select('fullName username classId rollNo')
+            .populate({ path: 'classId', populate: { path: 'departmentId' } })
+            .sort({ rollNo: 1 });
+
+        // Get all attendance records
+        const allAttendance = await Attendance.find({ classId: { $in: classIds } });
+
+        // Build student data
+        const studentData = [];
+        for (const student of students) {
+            const sid = student._id.toString();
+            let totalLectures = 0;
+            let attended = 0;
+
+            for (const record of allAttendance) {
+                if (record.classId.toString() !== (student.classId?._id || student.classId)?.toString()) continue;
+                const sr = record.records.find(r => r.studentId.toString() === sid);
+                if (sr) {
+                    totalLectures++;
+                    if (sr.status === 'present') attended++;
+                }
+            }
+
+            const overallPercentage = totalLectures > 0 ? Math.round((attended / totalLectures) * 100) : 0;
+
+            if (percentageRange) {
+                const [min, max] = percentageRange.split('-').map(Number);
+                if (overallPercentage < min || overallPercentage > max) continue;
+            }
+
+            let batchName = '';
+            if (student.classId?.batches) {
+                for (const batch of student.classId.batches) {
+                    if (batch.studentIds.some(id => id.toString() === sid)) {
+                        batchName = batch.name;
+                        break;
+                    }
+                }
+            }
+
+            studentData.push({
+                rollNo: student.rollNo || '',
+                fullName: student.fullName,
+                className: student.classId?.name || '',
+                year: student.classId?.year || '',
+                batch: batchName,
+                overallPercentage
+            });
+        }
+
+        // Sort by year ascending then rollNo ascending
+        studentData.sort((a, b) => {
+            if (a.year !== b.year) return (a.year || 0) - (b.year || 0);
+            return (a.rollNo || 999999) - (b.rollNo || 999999);
+        });
+
+        // Build Excel
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Defaulters');
+
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        // Header rows
+        const titleRow = ws.addRow(['DEFAULTERS REPORT']);
+        titleRow.getCell(1).font = { bold: true, size: 14 };
+        ws.addRow([`Department: ${dept?.name || 'N/A'}`]).font = { bold: true };
+        ws.addRow([`Class: ${filterClassName}`]).font = { bold: true };
+        ws.addRow([`Year: ${filterYear}`]).font = { bold: true };
+        ws.addRow([]);
+
+        // Table header
+        const headerRow = ws.addRow(['Roll No', 'Student Name', 'Batch', 'Attendance %']);
+        headerRow.eachCell((cell) => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        });
+
+        // Data rows
+        for (const s of studentData) {
+            const row = ws.addRow([s.rollNo, s.fullName, s.batch, `${s.overallPercentage}%`]);
+            row.eachCell((cell, colNumber) => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                // Red highlight for below 75%
+                if (colNumber === 4 && s.overallPercentage < 75) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+                    cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+                }
+            });
+        }
+
+        // Column widths
+        ws.getColumn(1).width = 10;
+        ws.getColumn(2).width = 30;
+        ws.getColumn(3).width = 15;
+        ws.getColumn(4).width = 18;
+
+        // Send
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="Defaulters_Report.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('HOD defaulters export error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 module.exports = router;
