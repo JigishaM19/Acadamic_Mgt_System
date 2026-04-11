@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const XLSX = require('xlsx');
 const User = require('../models/User');
 const Class = require('../models/Class');
 const Timetable = require('../models/Timetable');
@@ -11,9 +13,13 @@ const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
 const Subject = require('../models/Subject');
 const AcademicSettings = require('../models/AcademicSettings');
+const AssignmentMark = require('../models/AssignmentMark');
+const SubjectConfig = require('../models/SubjectConfig');
 const academicCalc = require('../utils/academicCalc');
 const { auth } = require('../middleware/auth');
 const { createNotification } = require('../utils/notificationUtils');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Middleware to ensure Class Coordinator access and get their assigned class
 const ccOnly = async (req, res, next) => {
@@ -753,6 +759,286 @@ router.put('/tests/:id', async (req, res) => {
         res.json(test);
     } catch (error) {
         console.error('CC test update error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ============================================
+// ASSIGNMENTS & EXPERIMENTS
+// ============================================
+
+// @route   GET /api/cc/assignment-config
+router.get('/assignment-config', async (req, res) => {
+    try {
+        const classId = req.classId;
+        const subjects = await Timetable.find({ classId }).distinct('subject');
+        const classDoc = await Class.findById(classId).populate('departmentId');
+        const result = [];
+        for (const subject of subjects) {
+            const config = await SubjectConfig.findOne({ classId, subject });
+            const assignmentCount = await AssignmentMark.countDocuments({ classId, subject, type: 'assignment' });
+            const experimentCount = await AssignmentMark.countDocuments({ classId, subject, type: 'experiment' });
+            result.push({
+                classId,
+                className: classDoc?.name || 'N/A',
+                year: classDoc?.year,
+                department: classDoc?.departmentId?.name || 'N/A',
+                subject,
+                totalAssignments: config?.totalAssignments || 0,
+                totalExperiments: config?.totalExperiments || 0,
+                assignmentMaxScore: config?.assignmentMaxScore || 10,
+                experimentMaxScore: config?.experimentMaxScore || 10,
+                assignmentsEntered: assignmentCount,
+                experimentsEntered: experimentCount
+            });
+        }
+        res.json(result);
+    } catch (error) {
+        console.error('CC assignment config error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   POST /api/cc/assignment-config
+router.post('/assignment-config', async (req, res) => {
+    try {
+        const classId = req.classId;
+        const { subject, totalAssignments, totalExperiments, assignmentMaxScore, experimentMaxScore } = req.body;
+        const config = await SubjectConfig.findOneAndUpdate(
+            { classId, subject },
+            {
+                totalAssignments: totalAssignments || 0,
+                totalExperiments: totalExperiments || 0,
+                assignmentMaxScore: assignmentMaxScore || 10,
+                experimentMaxScore: experimentMaxScore || 10,
+                updatedBy: req.user._id,
+                updatedAt: new Date()
+            },
+            { upsert: true, new: true }
+        );
+        res.json(config);
+    } catch (error) {
+        console.error('CC save config error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/cc/assignments/:subject
+router.get('/assignments/:subject', async (req, res) => {
+    try {
+        const classId = req.classId;
+        const subject = decodeURIComponent(req.params.subject);
+        const students = await User.find({ role: 'student', classId }).select('fullName lastName username').sort({ lastName: 1 });
+        const classDoc = await Class.findById(classId).populate('departmentId');
+        const config = await SubjectConfig.findOne({ classId, subject });
+        const assignments = await AssignmentMark.find({ classId, subject, type: 'assignment' }).sort({ number: 1 });
+        const experiments = await AssignmentMark.find({ classId, subject, type: 'experiment' }).sort({ number: 1 });
+        res.json({
+            classInfo: { classId, className: classDoc?.name, year: classDoc?.year, department: classDoc?.departmentId?.name, subject },
+            config: config || { totalAssignments: 0, totalExperiments: 0, assignmentMaxScore: 10, experimentMaxScore: 10 },
+            students, assignments, experiments
+        });
+    } catch (error) {
+        console.error('CC get assignments error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   POST /api/cc/assignments
+router.post('/assignments', async (req, res) => {
+    try {
+        const classId = req.classId;
+        const { subject, type, number, maxScore, marks } = req.body;
+        for (const mark of marks) {
+            if (mark.score !== null && mark.score !== undefined && mark.score > maxScore) {
+                return res.status(400).json({ message: `Score cannot exceed max of ${maxScore}` });
+            }
+        }
+        const result = await AssignmentMark.findOneAndUpdate(
+            { classId, subject, type, number },
+            { maxScore, marks, teacherId: req.user._id },
+            { upsert: true, new: true }
+        );
+        res.json(result);
+    } catch (error) {
+        console.error('CC save assignment marks error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   POST /api/cc/assignments/upload
+router.post('/assignments/upload', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+        const classId = req.classId;
+        const { subject, type } = req.body;
+        const config = await SubjectConfig.findOne({ classId, subject });
+        const totalCount = type === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
+        const maxScore = type === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+        const students = await User.find({ role: 'student', classId }).select('fullName username');
+        const studentMap = {};
+        students.forEach(s => { studentMap[s.username?.toLowerCase()] = s._id.toString(); });
+        let savedCount = 0;
+        const errors = [];
+        const label = type === 'assignment' ? 'Assignment' : 'Experiment';
+        const sampleRow = data[0] || {};
+        const numberCols = Object.keys(sampleRow).filter(k => k.startsWith(label));
+        for (let num = 1; num <= totalCount; num++) {
+            const colName = `${label} ${num}`;
+            if (!numberCols.includes(colName)) continue;
+            const marks = [];
+            for (const row of data) {
+                const rollNo = (row['Roll No'] || row['Username'] || '').toString().toLowerCase();
+                const studentId = studentMap[rollNo];
+                if (!studentId) { if (rollNo) errors.push(`Student not found: ${rollNo}`); continue; }
+                const score = row[colName];
+                marks.push({ studentId, score: (score === '' || score == null) ? null : parseFloat(score) });
+            }
+            if (marks.length > 0) {
+                await AssignmentMark.findOneAndUpdate(
+                    { classId, subject, type, number: num },
+                    { maxScore, marks, teacherId: req.user._id },
+                    { upsert: true, new: true }
+                );
+                savedCount++;
+            }
+        }
+        res.json({ message: `Uploaded ${savedCount} ${label.toLowerCase()} entries`, errors });
+    } catch (error) {
+        console.error('CC upload assignments error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/cc/assignments/:subject/template
+// @desc    Download Excel template for bulk upload
+router.get('/assignments/:subject/template', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const classId = req.classId;
+        const subject = decodeURIComponent(req.params.subject);
+        const { type } = req.query;
+
+        const students = await User.find({ role: 'student', classId })
+            .select('fullName lastName username').sort({ lastName: 1 });
+        const config = await SubjectConfig.findOne({ classId, subject });
+
+        const markType = type || 'assignment';
+        const total = markType === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
+        const maxScore = markType === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
+        const label = markType === 'assignment' ? 'Assignment' : 'Experiment';
+
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet(`${label} Template`);
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        ws.addRow([`${label} Marks Template - ${subject}`]).font = { bold: true, size: 14 };
+        ws.addRow([`Max Score per ${label}: ${maxScore}`]).font = { bold: true, color: { argb: 'FFFF0000' } };
+        ws.addRow([`Instructions: Fill scores (0-${maxScore}) for each ${label.toLowerCase()}. Do NOT change Roll No column.`]).font = { italic: true, color: { argb: 'FF666666' } };
+        ws.addRow([]);
+
+        const headers = ['Roll No', 'Student Name'];
+        for (let i = 1; i <= total; i++) headers.push(`${label} ${i}`);
+        const headerRow = ws.addRow(headers);
+        headerRow.eachCell(cell => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+
+        for (let idx = 0; idx < students.length; idx++) {
+            const student = students[idx];
+            const row = [idx + 1, student.fullName];
+            for (let i = 0; i < total; i++) row.push('');
+            const dataRow = ws.addRow(row);
+            dataRow.eachCell((cell, colNumber) => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center' };
+                if (colNumber > 2) {
+                    cell.dataValidation = {
+                        type: 'decimal', operator: 'between',
+                        formulae: [0, maxScore],
+                        showErrorMessage: true,
+                        errorTitle: 'Invalid Score',
+                        error: `Score must be between 0 and ${maxScore}`
+                    };
+                }
+            });
+        }
+
+        ws.getColumn(1).width = 14;
+        ws.getColumn(2).width = 28;
+        for (let i = 3; i <= 2 + total; i++) ws.getColumn(i).width = 14;
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="${subject}_${label}_Template.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('CC template download error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/cc/assignments/:subject/export
+router.get('/assignments/:subject/export', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const classId = req.classId;
+        const subject = decodeURIComponent(req.params.subject);
+        const { type } = req.query;
+        const students = await User.find({ role: 'student', classId }).select('fullName lastName username').sort({ lastName: 1 });
+        const classDoc = await Class.findById(classId).populate('departmentId');
+        const config = await SubjectConfig.findOne({ classId, subject });
+        const markType = type || 'assignment';
+        const total = markType === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
+        const maxScore = markType === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
+        const label = markType === 'assignment' ? 'Assignment' : 'Experiment';
+        const records = await AssignmentMark.find({ classId, subject, type: markType }).sort({ number: 1 });
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet(`${label} Marks`);
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+        ws.addRow([`${label} Marks - ${subject}`]).font = { bold: true, size: 14 };
+        ws.addRow([`Class: ${classDoc?.name || 'N/A'} | Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
+        ws.addRow([`Max Score per ${label}: ${maxScore}`]).font = { bold: true };
+        ws.addRow([]);
+        const headers = ['Roll No', 'Student Name'];
+        for (let i = 1; i <= Math.max(total, records.length); i++) headers.push(`${label} ${i}`);
+        headers.push('Average', 'Percentage');
+        const headerRow = ws.addRow(headers);
+        headerRow.eachCell(cell => {
+            cell.font = { bold: true }; cell.border = allBorders;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+        for (let idx = 0; idx < students.length; idx++) {
+            const student = students[idx];
+            const row = [idx + 1, student.fullName];
+            let totalScore = 0, count = 0;
+            for (let i = 1; i <= Math.max(total, records.length); i++) {
+                const rec = records.find(r => r.number === i);
+                const m = rec?.marks?.find(mk => mk.studentId.toString() === student._id.toString());
+                if (m?.score != null) { row.push(m.score); totalScore += m.score; count++; } else row.push('');
+            }
+            const avg = count > 0 ? (totalScore / count).toFixed(1) : '';
+            const pct = count > 0 ? ((totalScore / (count * maxScore)) * 100).toFixed(0) + '%' : '';
+            row.push(avg, pct);
+            const dataRow = ws.addRow(row);
+            dataRow.eachCell(cell => { cell.border = allBorders; cell.alignment = { horizontal: 'center' }; });
+        }
+        ws.getColumn(1).width = 12; ws.getColumn(2).width = 25;
+        for (let i = 3; i <= headers.length; i++) ws.getColumn(i).width = 14;
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="${subject}_${label}_Marks.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('CC export assignments error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });

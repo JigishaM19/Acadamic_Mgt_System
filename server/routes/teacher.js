@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const XLSX = require('xlsx');
 const User = require('../models/User');
 const Class = require('../models/Class');
 const Timetable = require('../models/Timetable');
@@ -10,9 +12,13 @@ const TimeSlot = require('../models/TimeSlot');
 const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
 const AcademicSettings = require('../models/AcademicSettings');
+const AssignmentMark = require('../models/AssignmentMark');
+const SubjectConfig = require('../models/SubjectConfig');
 const academicCalc = require('../utils/academicCalc');
 const { auth } = require('../middleware/auth');
 const { createNotification } = require('../utils/notificationUtils');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Middleware to ensure teacher access
 const teacherOnly = async (req, res, next) => {
@@ -905,6 +911,10 @@ router.get('/tests/:classId/:subject/ia-preview', async (req, res) => {
             categoryMap[tt.name] = tt.category || 'ut';
         }
 
+        // Fetch assignment/experiment marks from AssignmentMark model
+        const assignmentMarkRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
+        const experimentMarkRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
+
         const iaPreview = [];
         for (const student of students) {
             const sid = student._id.toString();
@@ -941,6 +951,26 @@ router.get('/tests/:classId/:subject/ia-preview', async (req, res) => {
                 }
             }
 
+            // Assignment marks from AssignmentMark model
+            for (const am of assignmentMarkRecords) {
+                const sm = am.marks.find(m => m.studentId.toString() === sid);
+                if (sm?.score !== null && sm?.score !== undefined) {
+                    assignmentScores.push(sm.score);
+                    assignmentMax = Math.max(assignmentMax, am.maxScore);
+                }
+            }
+
+            // Experiment/practical marks from AssignmentMark model
+            const practicalScores = [];
+            let practicalMax = 0;
+            for (const em of experimentMarkRecords) {
+                const sm = em.marks.find(m => m.studentId.toString() === sid);
+                if (sm?.score !== null && sm?.score !== undefined) {
+                    practicalScores.push(sm.score);
+                    practicalMax = Math.max(practicalMax, em.maxScore);
+                }
+            }
+
             const utIA = academicCalc.calcUTIA(utScores, utMaxMarks, settings.utWeight);
             const assignmentIA = assignmentScores.length > 0
                 ? academicCalc.calcAssignmentIA(
@@ -948,8 +978,14 @@ router.get('/tests/:classId/:subject/ia-preview', async (req, res) => {
                     assignmentMax,
                     settings.assignmentWeight
                 ) : 0;
+            const practicalIA = practicalScores.length > 0
+                ? academicCalc.calcPracticalIA(
+                    practicalScores.reduce((a, b) => a + b, 0) / practicalScores.length,
+                    practicalMax,
+                    settings.practicalWeight
+                ) : 0;
             const attendanceIA = academicCalc.calcAttendanceIA(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
-            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA);
+            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA, practicalIA);
 
             iaPreview.push({
                 studentId: student._id,
@@ -957,6 +993,7 @@ router.get('/tests/:classId/:subject/ia-preview', async (req, res) => {
                 username: student.username,
                 utIA,
                 assignmentIA,
+                practicalIA,
                 attendanceIA,
                 totalIA,
                 iaTotal: settings.iaTotal,
@@ -1071,6 +1108,400 @@ router.delete('/tests/:id', async (req, res) => {
         res.json({ message: 'Test record deleted' });
     } catch (error) {
         console.error('Delete test error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ============================================
+// ASSIGNMENTS & EXPERIMENTS
+// ============================================
+
+// @route   GET /api/teacher/assignment-config
+// @desc    Get subject configs for teacher's classes
+router.get('/assignment-config', async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+        const timetableEntries = await Timetable.find({ teacherId }).populate('classId');
+
+        const classSubjectMap = new Map();
+        for (const entry of timetableEntries) {
+            if (!entry.classId) continue;
+            const key = `${entry.classId._id}-${entry.subject}`;
+            if (!classSubjectMap.has(key)) {
+                classSubjectMap.set(key, {
+                    classId: entry.classId._id,
+                    className: entry.classId.name,
+                    year: entry.classId.year,
+                    subject: entry.subject,
+                    departmentId: entry.classId.departmentId
+                });
+            }
+        }
+
+        const result = [];
+        for (const [key, data] of classSubjectMap) {
+            const config = await SubjectConfig.findOne({ classId: data.classId, subject: data.subject });
+            const classDoc = await Class.findById(data.classId).populate('departmentId');
+            const assignmentCount = await AssignmentMark.countDocuments({ classId: data.classId, subject: data.subject, type: 'assignment' });
+            const experimentCount = await AssignmentMark.countDocuments({ classId: data.classId, subject: data.subject, type: 'experiment' });
+
+            result.push({
+                classId: data.classId,
+                className: data.className,
+                year: data.year,
+                department: classDoc?.departmentId?.name || 'N/A',
+                subject: data.subject,
+                totalAssignments: config?.totalAssignments || 0,
+                totalExperiments: config?.totalExperiments || 0,
+                assignmentMaxScore: config?.assignmentMaxScore || 10,
+                experimentMaxScore: config?.experimentMaxScore || 10,
+                assignmentsEntered: assignmentCount,
+                experimentsEntered: experimentCount
+            });
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error('Assignment config error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   POST /api/teacher/assignment-config
+// @desc    Set total assignments/experiments for a subject
+router.post('/assignment-config', async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+        const { classId, subject, totalAssignments, totalExperiments, assignmentMaxScore, experimentMaxScore } = req.body;
+
+        // Verify teacher teaches this class-subject
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject });
+        if (!timetableEntry) {
+            return res.status(403).json({ message: 'You do not teach this class-subject' });
+        }
+
+        const config = await SubjectConfig.findOneAndUpdate(
+            { classId, subject },
+            {
+                totalAssignments: totalAssignments || 0,
+                totalExperiments: totalExperiments || 0,
+                assignmentMaxScore: assignmentMaxScore || 10,
+                experimentMaxScore: experimentMaxScore || 10,
+                updatedBy: teacherId,
+                updatedAt: new Date()
+            },
+            { upsert: true, new: true }
+        );
+
+        res.json(config);
+    } catch (error) {
+        console.error('Save assignment config error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/teacher/assignments/:classId/:subject
+// @desc    Get all assignment/experiment marks for a class-subject
+router.get('/assignments/:classId/:subject', async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+        const { classId, subject } = req.params;
+        const decodedSubject = decodeURIComponent(subject);
+
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject: decodedSubject });
+        if (!timetableEntry) {
+            return res.status(403).json({ message: 'You do not teach this class-subject' });
+        }
+
+        const students = await User.find({ role: 'student', classId })
+            .select('fullName lastName username').sort({ lastName: 1 });
+        const classDoc = await Class.findById(classId).populate('departmentId');
+        const config = await SubjectConfig.findOne({ classId, subject: decodedSubject });
+        const assignments = await AssignmentMark.find({ classId, subject: decodedSubject, type: 'assignment' }).sort({ number: 1 });
+        const experiments = await AssignmentMark.find({ classId, subject: decodedSubject, type: 'experiment' }).sort({ number: 1 });
+
+        res.json({
+            classInfo: {
+                classId,
+                className: classDoc?.name || 'N/A',
+                year: classDoc?.year,
+                department: classDoc?.departmentId?.name || 'N/A',
+                subject: decodedSubject
+            },
+            config: config || { totalAssignments: 0, totalExperiments: 0, assignmentMaxScore: 10, experimentMaxScore: 10 },
+            students,
+            assignments,
+            experiments
+        });
+    } catch (error) {
+        console.error('Get assignments error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   POST /api/teacher/assignments
+// @desc    Create or update assignment/experiment marks
+router.post('/assignments', async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+        const { classId, subject, type, number, maxScore, marks } = req.body;
+
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject });
+        if (!timetableEntry) {
+            return res.status(403).json({ message: 'You do not teach this class-subject' });
+        }
+
+        // Validate marks
+        for (const mark of marks) {
+            if (mark.score !== null && mark.score !== undefined && mark.score > maxScore) {
+                return res.status(400).json({ message: `Score cannot exceed max of ${maxScore}` });
+            }
+        }
+
+        const result = await AssignmentMark.findOneAndUpdate(
+            { classId, subject, type, number },
+            { maxScore, marks, teacherId },
+            { upsert: true, new: true }
+        );
+
+        res.json(result);
+    } catch (error) {
+        console.error('Save assignment marks error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   POST /api/teacher/assignments/upload
+// @desc    Upload Excel for bulk assignment/experiment marks
+router.post('/assignments/upload', upload.single('file'), async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+        const { classId, subject, type } = req.body;
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject });
+        if (!timetableEntry) {
+            return res.status(403).json({ message: 'You do not teach this class-subject' });
+        }
+
+        const config = await SubjectConfig.findOne({ classId, subject });
+        const totalCount = type === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
+        const maxScore = type === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
+
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(sheet);
+
+        const students = await User.find({ role: 'student', classId }).select('fullName username');
+        const studentMap = {};
+        students.forEach(s => { studentMap[s.username?.toLowerCase()] = s._id.toString(); });
+
+        let savedCount = 0;
+        const errors = [];
+        const label = type === 'assignment' ? 'Assignment' : 'Experiment';
+
+        // Determine columns from header
+        const sampleRow = data[0] || {};
+        const numberCols = Object.keys(sampleRow).filter(k => k.startsWith(label));
+
+        for (let num = 1; num <= totalCount; num++) {
+            const colName = `${label} ${num}`;
+            if (!numberCols.includes(colName)) continue;
+
+            const marks = [];
+            for (const row of data) {
+                const rollNo = (row['Roll No'] || row['rollNo'] || row['Username'] || '').toString().toLowerCase();
+                const studentId = studentMap[rollNo];
+                if (!studentId) {
+                    if (rollNo) errors.push(`Student not found: ${rollNo}`);
+                    continue;
+                }
+                const score = row[colName];
+                marks.push({
+                    studentId,
+                    score: (score === '' || score === undefined || score === null) ? null : parseFloat(score)
+                });
+            }
+
+            if (marks.length > 0) {
+                await AssignmentMark.findOneAndUpdate(
+                    { classId, subject, type, number: num },
+                    { maxScore, marks, teacherId },
+                    { upsert: true, new: true }
+                );
+                savedCount++;
+            }
+        }
+
+        res.json({ message: `Uploaded ${savedCount} ${label.toLowerCase()} entries`, errors });
+    } catch (error) {
+        console.error('Upload assignments error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/teacher/assignments/:classId/:subject/template
+// @desc    Download Excel template for bulk upload
+router.get('/assignments/:classId/:subject/template', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const teacherId = req.teacherId;
+        const { classId, subject } = req.params;
+        const { type } = req.query;
+        const decodedSubject = decodeURIComponent(subject);
+
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject: decodedSubject });
+        if (!timetableEntry) return res.status(403).json({ message: 'Access denied' });
+
+        const students = await User.find({ role: 'student', classId })
+            .select('fullName lastName username').sort({ lastName: 1 });
+        const config = await SubjectConfig.findOne({ classId, subject: decodedSubject });
+
+        const markType = type || 'assignment';
+        const total = markType === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
+        const maxScore = markType === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
+        const label = markType === 'assignment' ? 'Assignment' : 'Experiment';
+
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet(`${label} Template`);
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        ws.addRow([`${label} Marks Template - ${decodedSubject}`]).font = { bold: true, size: 14 };
+        ws.addRow([`Max Score per ${label}: ${maxScore}`]).font = { bold: true, color: { argb: 'FFFF0000' } };
+        ws.addRow([`Instructions: Fill scores (0-${maxScore}) for each ${label.toLowerCase()}. Do NOT change Roll No column.`]).font = { italic: true, color: { argb: 'FF666666' } };
+        ws.addRow([]);
+
+        // Header row
+        const headers = ['Roll No', 'Student Name'];
+        for (let i = 1; i <= total; i++) headers.push(`${label} ${i}`);
+        const headerRow = ws.addRow(headers);
+        headerRow.eachCell(cell => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+
+        // Student rows with empty scores
+        for (let idx = 0; idx < students.length; idx++) {
+            const student = students[idx];
+            const row = [idx + 1, student.fullName];
+            for (let i = 0; i < total; i++) row.push('');
+            const dataRow = ws.addRow(row);
+            dataRow.eachCell((cell, colNumber) => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center' };
+                if (colNumber > 2) {
+                    cell.dataValidation = {
+                        type: 'decimal', operator: 'between',
+                        formulae: [0, maxScore],
+                        showErrorMessage: true,
+                        errorTitle: 'Invalid Score',
+                        error: `Score must be between 0 and ${maxScore}`
+                    };
+                }
+            });
+        }
+
+        ws.getColumn(1).width = 14;
+        ws.getColumn(2).width = 28;
+        for (let i = 3; i <= 2 + total; i++) ws.getColumn(i).width = 14;
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_${label}_Template.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('Template download error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/teacher/assignments/:classId/:subject/export
+// @desc    Export assignment/experiment marks to Excel
+router.get('/assignments/:classId/:subject/export', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const teacherId = req.teacherId;
+        const { classId, subject } = req.params;
+        const { type } = req.query; // 'assignment' or 'experiment'
+        const decodedSubject = decodeURIComponent(subject);
+
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject: decodedSubject });
+        if (!timetableEntry) return res.status(403).json({ message: 'Access denied' });
+
+        const students = await User.find({ role: 'student', classId })
+            .select('fullName firstName lastName username').sort({ lastName: 1 });
+        const classDoc = await Class.findById(classId).populate('departmentId');
+        const config = await SubjectConfig.findOne({ classId, subject: decodedSubject });
+
+        const markType = type || 'assignment';
+        const total = markType === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
+        const maxScore = markType === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
+        const label = markType === 'assignment' ? 'Assignment' : 'Experiment';
+        const records = await AssignmentMark.find({ classId, subject: decodedSubject, type: markType }).sort({ number: 1 });
+
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet(`${label} Marks`);
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        ws.addRow([`${label} Marks - ${decodedSubject}`]).font = { bold: true, size: 14 };
+        ws.addRow([`Class: ${classDoc?.name || 'N/A'} | Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
+        ws.addRow([`Max Score per ${label}: ${maxScore}`]).font = { bold: true };
+        ws.addRow([]);
+
+        // Header row
+        const headers = ['Roll No', 'Student Name'];
+        for (let i = 1; i <= Math.max(total, records.length); i++) {
+            headers.push(`${label} ${i}`);
+        }
+        headers.push('Average', 'Percentage');
+        const headerRow = ws.addRow(headers);
+        headerRow.eachCell(cell => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+
+        // Data rows
+        for (let idx = 0; idx < students.length; idx++) {
+            const student = students[idx];
+            const row = [idx + 1, student.fullName || `${student.firstName} ${student.lastName}`];
+            let totalScore = 0, count = 0;
+            for (let i = 1; i <= Math.max(total, records.length); i++) {
+                const record = records.find(r => r.number === i);
+                const mark = record?.marks?.find(m => m.studentId.toString() === student._id.toString());
+                if (mark?.score !== null && mark?.score !== undefined) {
+                    row.push(mark.score);
+                    totalScore += mark.score;
+                    count++;
+                } else {
+                    row.push('');
+                }
+            }
+            const avg = count > 0 ? (totalScore / count).toFixed(1) : '';
+            const pct = count > 0 ? ((totalScore / (count * maxScore)) * 100).toFixed(0) + '%' : '';
+            row.push(avg, pct);
+            const dataRow = ws.addRow(row);
+            dataRow.eachCell(cell => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center' };
+            });
+        }
+
+        ws.getColumn(1).width = 12;
+        ws.getColumn(2).width = 25;
+        for (let i = 3; i <= headers.length; i++) ws.getColumn(i).width = 14;
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_${label}_Marks.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('Export assignments error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });

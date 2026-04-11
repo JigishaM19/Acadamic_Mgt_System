@@ -103,10 +103,11 @@ function calcAttendanceIA(percentage, attendanceWeight, slabs) {
  * @param {number} utIA
  * @param {number} assignmentIA
  * @param {number} attendanceIA
+ * @param {number} practicalIA
  * @returns {number}
  */
-function calcTotalIA(utIA, assignmentIA, attendanceIA) {
-    return Math.round((utIA + assignmentIA + attendanceIA) * 100) / 100;
+function calcTotalIA(utIA, assignmentIA, attendanceIA, practicalIA = 0) {
+    return Math.round((utIA + assignmentIA + attendanceIA + practicalIA) * 100) / 100;
 }
 
 /**

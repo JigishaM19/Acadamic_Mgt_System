@@ -128,6 +128,7 @@ const StudentTestScores = () => {
                                     <th>Subject</th>
                                     <th style={{ textAlign: 'center' }}>UT IA</th>
                                     <th style={{ textAlign: 'center' }}>Assignment IA</th>
+                                    <th style={{ textAlign: 'center' }}>Practical IA</th>
                                     <th style={{ textAlign: 'center' }}>Attendance IA</th>
                                     <th style={{ textAlign: 'center' }}>Total IA</th>
                                     <th style={{ textAlign: 'center' }}>Status</th>
@@ -142,6 +143,7 @@ const StudentTestScores = () => {
                                             <td style={{ fontWeight: '500' }}>{ia.subject}</td>
                                             <td style={{ textAlign: 'center' }}>{ia.utIA?.toFixed(1) ?? '—'}</td>
                                             <td style={{ textAlign: 'center' }}>{ia.assignmentIA?.toFixed(1) ?? '—'}</td>
+                                            <td style={{ textAlign: 'center' }}>{ia.practicalIA?.toFixed(1) ?? '0.0'}</td>
                                             <td style={{ textAlign: 'center' }}>{ia.attendanceIA?.toFixed(1) ?? '—'}</td>
                                             <td style={{ textAlign: 'center' }}>
                                                 <span style={{

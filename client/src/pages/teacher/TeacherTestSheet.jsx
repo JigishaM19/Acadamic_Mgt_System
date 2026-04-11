@@ -540,8 +540,9 @@ const TeacherTestSheet = () => {
                                 <tr>
                                     <th>Roll No</th>
                                     <th>Name</th>
-                                    <th style={{ textAlign: 'center' }}>UT IA</th>
+                                     <th style={{ textAlign: 'center' }}>UT IA</th>
                                     <th style={{ textAlign: 'center' }}>Assignment IA</th>
+                                    <th style={{ textAlign: 'center' }}>Practical IA</th>
                                     <th style={{ textAlign: 'center' }}>Attendance IA</th>
                                     <th style={{ textAlign: 'center' }}>Total IA / {iaPreview.settings?.iaTotal || 20}</th>
                                     <th style={{ textAlign: 'center' }}>Attendance %</th>
@@ -555,6 +556,7 @@ const TeacherTestSheet = () => {
                                         <td>{row.fullName}</td>
                                         <td style={{ textAlign: 'center' }}>{row.utIA?.toFixed(1) ?? '—'}</td>
                                         <td style={{ textAlign: 'center' }}>{row.assignmentIA?.toFixed(1) ?? '—'}</td>
+                                        <td style={{ textAlign: 'center' }}>{row.practicalIA?.toFixed(1) ?? '0.0'}</td>
                                         <td style={{ textAlign: 'center' }}>{row.attendanceIA?.toFixed(1) ?? '—'}</td>
                                         <td style={{ textAlign: 'center' }}>
                                             <span style={{

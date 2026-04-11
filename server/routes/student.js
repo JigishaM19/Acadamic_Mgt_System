@@ -11,6 +11,8 @@ const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
 const Subject = require('../models/Subject');
 const AcademicSettings = require('../models/AcademicSettings');
+const AssignmentMark = require('../models/AssignmentMark');
+const SubjectConfig = require('../models/SubjectConfig');
 const academicCalc = require('../utils/academicCalc');
 const { auth } = require('../middleware/auth');
 const { createNotification } = require('../utils/notificationUtils');
@@ -166,17 +168,47 @@ router.get('/stats', async (req, res) => {
                     settings.assignmentWeight
                 ) : 0;
 
+            // Get experiment marks from AssignmentMark model
+            const experimentRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
+            let practicalScoresArr = [...practicalScores];
+            let practicalMaxVal = practicalMax;
+            for (const em of experimentRecords) {
+                const sm = em.marks.find(m => m.studentId.toString() === studentId.toString());
+                if (sm?.score !== null && sm?.score !== undefined) {
+                    practicalScoresArr.push(sm.score);
+                    practicalMaxVal = Math.max(practicalMaxVal, em.maxScore);
+                }
+            }
+
+            // Get assignment marks from AssignmentMark model
+            const assignmentRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
+            for (const am of assignmentRecords) {
+                const sm = am.marks.find(m => m.studentId.toString() === studentId.toString());
+                if (sm?.score !== null && sm?.score !== undefined) {
+                    assignmentScores.push(sm.score);
+                    assignmentMax = Math.max(assignmentMax, am.maxScore);
+                }
+            }
+
+            const practicalIA = practicalScoresArr.length > 0
+                ? academicCalc.calcPracticalIA(
+                    practicalScoresArr.reduce((a, b) => a + b, 0) / practicalScoresArr.length,
+                    practicalMaxVal,
+                    settings.practicalWeight
+                ) : 0;
+
             // Get attendance for this subject
             const subjectAtt = attendanceStats.find(a => a.subject === subject);
             const attPercent = subjectAtt ? subjectAtt.percentage : 0;
             const attendanceIA = academicCalc.calcAttendanceIA(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
 
-            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA);
+            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA, practicalIA);
 
             iaStats.push({
                 subject,
                 utIA,
                 assignmentIA,
+                practicalIA,
                 attendanceIA,
                 totalIA,
                 iaTotal: settings.iaTotal,
@@ -532,14 +564,45 @@ router.get('/ia-summary', async (req, res) => {
                     assignmentMax,
                     settings.assignmentWeight
                 ) : 0;
+
+            // Get experiment marks from AssignmentMark model
+            const experimentRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
+            const practicalScoresArr = [];
+            let practicalMaxVal = 0;
+            for (const em of experimentRecords) {
+                const sm = em.marks.find(m => m.studentId.toString() === studentId.toString());
+                if (sm?.score !== null && sm?.score !== undefined) {
+                    practicalScoresArr.push(sm.score);
+                    practicalMaxVal = Math.max(practicalMaxVal, em.maxScore);
+                }
+            }
+
+            // Get assignment marks from AssignmentMark model
+            const assignmentRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
+            for (const am of assignmentRecords) {
+                const sm = am.marks.find(m => m.studentId.toString() === studentId.toString());
+                if (sm?.score !== null && sm?.score !== undefined) {
+                    assignmentScores.push(sm.score);
+                    assignmentMax = Math.max(assignmentMax, am.maxScore);
+                }
+            }
+
+            const practicalIA = practicalScoresArr.length > 0
+                ? academicCalc.calcPracticalIA(
+                    practicalScoresArr.reduce((a, b) => a + b, 0) / practicalScoresArr.length,
+                    practicalMaxVal,
+                    settings.practicalWeight
+                ) : 0;
+
             const attendanceIA = academicCalc.calcAttendanceIA(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
-            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA);
+            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA, practicalIA);
 
             iaSummary.push({
                 subject,
                 utIA,
                 utScores,
                 assignmentIA,
+                practicalIA,
                 attendanceIA,
                 totalIA,
                 iaTotal: settings.iaTotal,
@@ -666,6 +729,56 @@ router.get('/tests/:subject', async (req, res) => {
 
     } catch (error) {
         console.error('Student tests detail error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ============================================
+// ASSIGNMENTS & EXPERIMENTS (view)
+// ============================================
+
+// @route   GET /api/student/assignments
+// @desc    Get own assignment/experiment marks
+router.get('/assignments', async (req, res) => {
+    try {
+        let studentId = req.studentId;
+        let classId = req.studentClassId;
+        if (req.isParent) {
+            const student = await User.findById(studentId);
+            if (!student) return res.status(404).json({ message: 'Linked student not found' });
+            classId = student.classId;
+        }
+        if (!classId) return res.status(400).json({ message: 'Student is not assigned to a class' });
+
+        const subjects = await Timetable.find({ classId }).distinct('subject');
+        const result = [];
+        for (const subject of subjects) {
+            const config = await SubjectConfig.findOne({ classId, subject });
+            const assignments = await AssignmentMark.find({ classId, subject, type: 'assignment' }).sort({ number: 1 });
+            const experiments = await AssignmentMark.find({ classId, subject, type: 'experiment' }).sort({ number: 1 });
+
+            const assignmentMarks = assignments.map(a => {
+                const mark = a.marks.find(m => m.studentId.toString() === studentId.toString());
+                return { number: a.number, maxScore: a.maxScore, score: mark?.score ?? null, percentage: mark?.score != null ? Math.round((mark.score / a.maxScore) * 100) : null };
+            });
+            const experimentMarks = experiments.map(e => {
+                const mark = e.marks.find(m => m.studentId.toString() === studentId.toString());
+                return { number: e.number, maxScore: e.maxScore, score: mark?.score ?? null, percentage: mark?.score != null ? Math.round((mark.score / e.maxScore) * 100) : null };
+            });
+
+            if (assignmentMarks.length > 0 || experimentMarks.length > 0 || (config?.totalAssignments > 0) || (config?.totalExperiments > 0)) {
+                result.push({
+                    subject,
+                    totalAssignments: config?.totalAssignments || 0,
+                    totalExperiments: config?.totalExperiments || 0,
+                    assignmentMarks,
+                    experimentMarks
+                });
+            }
+        }
+        res.json(result);
+    } catch (error) {
+        console.error('Student assignments error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });

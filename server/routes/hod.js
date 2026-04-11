@@ -11,6 +11,8 @@ const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
 const Subject = require('../models/Subject');
 const AcademicSettings = require('../models/AcademicSettings');
+const AssignmentMark = require('../models/AssignmentMark');
+const SubjectConfig = require('../models/SubjectConfig');
 const academicCalc = require('../utils/academicCalc');
 const { auth, roles } = require('../middleware/auth');
 const { reorganizeClass, getClassStudents, updateBatchNames, syncStudentAttendance } = require('../utils/classUtils');
@@ -766,6 +768,75 @@ router.post('/subjects/bulk-upload', upload.single('file'), async (req, res) => 
         res.json(results);
     } catch (error) {
         console.error('HOD bulk upload subjects error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ============================================
+// ASSIGNMENTS & EXPERIMENTS (view-only)
+// ============================================
+
+// @route   GET /api/hod/assignments
+// @desc    Get assignment/experiment overview for department
+router.get('/assignments', async (req, res) => {
+    try {
+        const departmentId = req.departmentId;
+        const { year, classId: filterClassId } = req.query;
+        const classFilter = { departmentId };
+        if (year) classFilter.year = parseInt(year);
+        const classes = await Class.find(classFilter).populate('departmentId');
+        const result = [];
+        for (const cls of classes) {
+            if (filterClassId && cls._id.toString() !== filterClassId) continue;
+            const subjects = await Timetable.find({ classId: cls._id }).distinct('subject');
+            for (const subject of subjects) {
+                const config = await SubjectConfig.findOne({ classId: cls._id, subject });
+                const assignmentCount = await AssignmentMark.countDocuments({ classId: cls._id, subject, type: 'assignment' });
+                const experimentCount = await AssignmentMark.countDocuments({ classId: cls._id, subject, type: 'experiment' });
+                if ((config?.totalAssignments || 0) > 0 || (config?.totalExperiments || 0) > 0 || assignmentCount > 0 || experimentCount > 0) {
+                    result.push({
+                        classId: cls._id,
+                        className: cls.name,
+                        year: cls.year,
+                        department: cls.departmentId?.name || 'N/A',
+                        subject,
+                        totalAssignments: config?.totalAssignments || 0,
+                        totalExperiments: config?.totalExperiments || 0,
+                        assignmentsEntered: assignmentCount,
+                        experimentsEntered: experimentCount
+                    });
+                }
+            }
+        }
+        res.json(result);
+    } catch (error) {
+        console.error('HOD assignments error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/hod/assignments/:classId/:subject
+// @desc    Get detailed assignment/experiment marks
+router.get('/assignments/:classId/:subject', async (req, res) => {
+    try {
+        const departmentId = req.departmentId;
+        const { classId, subject } = req.params;
+        const decodedSubject = decodeURIComponent(subject);
+        const classDoc = await Class.findById(classId).populate('departmentId');
+        if (!classDoc || classDoc.departmentId?._id?.toString() !== departmentId.toString()) {
+            return res.status(403).json({ message: 'Class not in your department' });
+        }
+        const students = await User.find({ role: 'student', classId }).select('fullName lastName username').sort({ lastName: 1 });
+        const config = await SubjectConfig.findOne({ classId, subject: decodedSubject });
+        const assignments = await AssignmentMark.find({ classId, subject: decodedSubject, type: 'assignment' }).sort({ number: 1 });
+        const experiments = await AssignmentMark.find({ classId, subject: decodedSubject, type: 'experiment' }).sort({ number: 1 });
+        res.json({
+            classInfo: { classId, className: classDoc.name, year: classDoc.year, department: classDoc.departmentId?.name, subject: decodedSubject },
+            config: config || { totalAssignments: 0, totalExperiments: 0, assignmentMaxScore: 10, experimentMaxScore: 10 },
+            students, assignments, experiments
+        });
+    } catch (error) {
+        console.error('HOD assignment details error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });
