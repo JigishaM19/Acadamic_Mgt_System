@@ -1301,8 +1301,6 @@ router.get('/defaulters', async (req, res) => {
         const result = [];
         for (const student of students) {
             const sid = student._id.toString();
-            let totalLectures = 0;
-            let totalAttended = 0;
             const subjectAttendance = {};
 
             for (const subj of timetableSubjects) {
@@ -1320,11 +1318,11 @@ router.get('/defaulters', async (req, res) => {
 
                 const subjPercentage = subjTotal > 0 ? Math.round((subjAttended / subjTotal) * 100) : 0;
                 subjectAttendance[subj] = subjPercentage;
-                totalLectures += subjTotal;
-                totalAttended += subjAttended;
             }
 
-            const overallPercentage = totalLectures > 0 ? Math.round((totalAttended / totalLectures) * 100) : 0;
+            const overallPercentage = timetableSubjects.length > 0
+                ? Math.round(timetableSubjects.reduce((sum, subj) => sum + (subjectAttendance[subj] || 0), 0) / timetableSubjects.length)
+                : 0;
 
             // Apply percentage filter
             if (percentageRange) {
@@ -1402,8 +1400,6 @@ router.get('/defaulters/export', async (req, res) => {
         const studentData = [];
         for (const student of students) {
             const sid = student._id.toString();
-            let totalLectures = 0;
-            let totalAttended = 0;
             const subjectAttendance = {};
 
             for (const subj of timetableSubjects) {
@@ -1421,11 +1417,11 @@ router.get('/defaulters/export', async (req, res) => {
 
                 const subjPercentage = subjTotal > 0 ? Math.round((subjAttended / subjTotal) * 100) : 0;
                 subjectAttendance[subj] = subjPercentage;
-                totalLectures += subjTotal;
-                totalAttended += subjAttended;
             }
 
-            const overallPercentage = totalLectures > 0 ? Math.round((totalAttended / totalLectures) * 100) : 0;
+            const overallPercentage = timetableSubjects.length > 0
+                ? Math.round(timetableSubjects.reduce((sum, subj) => sum + (subjectAttendance[subj] || 0), 0) / timetableSubjects.length)
+                : 0;
 
             if (percentageRange) {
                 const [min, max] = percentageRange.split('-').map(Number);

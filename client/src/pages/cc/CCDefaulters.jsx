@@ -115,8 +115,15 @@ const CCDefaulters = () => {
         return rollA - rollB;
     });
 
+    // Helper to compute overall as average of all subject percentages
+    const computeOverall = (s) => {
+        if (subjects.length === 0) return 0;
+        const pcts = subjects.map(subj => s.subjectAttendance?.[subj] || 0);
+        return Math.round(pcts.reduce((sum, p) => sum + p, 0) / subjects.length);
+    };
+
     // Count defaulters (below 75%)
-    const defaulterCount = sortedStudents.filter(s => s.overallPercentage < 75).length;
+    const defaulterCount = sortedStudents.filter(s => computeOverall(s) < 75).length;
 
     // Paginate
     const paginatedStudents = paginateData(sortedStudents);
@@ -234,7 +241,12 @@ const CCDefaulters = () => {
                                     <th>Roll No</th>
                                     <th>Name</th>
                                     {subjects.map(subj => (
-                                        <th key={subj} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{subj}</th>
+                                        <th key={subj} style={{ textAlign: 'center', padding: '8px 6px', minWidth: '50px', maxWidth: '70px' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                <span style={{ fontSize: '9px', color: 'var(--text-secondary)', lineHeight: '1.2', wordBreak: 'break-word', textAlign: 'center' }}>{subj}</span>
+                                                <span style={{ fontSize: '15px', fontWeight: '700', lineHeight: '1' }}>{subj.charAt(0).toUpperCase()}</span>
+                                            </div>
+                                        </th>
                                     ))}
                                     <th style={{ textAlign: 'center' }}>Overall %</th>
                                 </tr>
@@ -250,7 +262,7 @@ const CCDefaulters = () => {
                                                 return (
                                                     <td key={subj} style={{ textAlign: 'center' }}>
                                                         <span style={{
-                                                            padding: '3px 10px',
+                                                            padding: '3px 8px',
                                                             borderRadius: '10px',
                                                             fontSize: '12px',
                                                             fontWeight: '500',
@@ -262,18 +274,23 @@ const CCDefaulters = () => {
                                                     </td>
                                                 );
                                             })}
-                                            <td style={{ textAlign: 'center' }}>
-                                                <span style={{
-                                                    padding: '4px 12px',
-                                                    borderRadius: '12px',
-                                                    fontSize: '12px',
-                                                    fontWeight: '600',
-                                                    background: getPercentageBg(s.overallPercentage),
-                                                    color: getPercentageColor(s.overallPercentage)
-                                                }}>
-                                                    {s.overallPercentage}%
-                                                </span>
-                                            </td>
+                                            {(() => {
+                                                const overall = computeOverall(s);
+                                                return (
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        <span style={{
+                                                            padding: '4px 12px',
+                                                            borderRadius: '12px',
+                                                            fontSize: '12px',
+                                                            fontWeight: '600',
+                                                            background: getPercentageBg(overall),
+                                                            color: getPercentageColor(overall)
+                                                        }}>
+                                                            {overall}%
+                                                        </span>
+                                                    </td>
+                                                );
+                                            })()}
                                         </tr>
                                     ))
                                 ) : (
