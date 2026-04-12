@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { FiArrowLeft, FiSave, FiSettings, FiUpload, FiDownload, FiX, FiFile } from 'react-icons/fi';
@@ -14,6 +15,8 @@ const TeacherAssignmentSheet = () => {
     const [students, setStudents] = useState([]);
     const [assignments, setAssignments] = useState([]);
     const [experiments, setExperiments] = useState([]);
+    const [labAttendance, setLabAttendance] = useState([]);
+    const [internalViva, setInternalViva] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
@@ -40,6 +43,15 @@ const TeacherAssignmentSheet = () => {
             setStudents(res.data.students);
             setAssignments(res.data.assignments);
             setExperiments(res.data.experiments);
+            // Fetch lab attendance & internal viva
+            try {
+                const laRes = await api.get(`/teacher/assignments/${classId}/${encodeURIComponent(decodedSubject)}?type=lab_attendance`);
+                setLabAttendance(laRes.data.assignments || laRes.data.experiments || []);
+            } catch { setLabAttendance([]); }
+            try {
+                const ivRes = await api.get(`/teacher/assignments/${classId}/${encodeURIComponent(decodedSubject)}?type=internal_viva`);
+                setInternalViva(ivRes.data.assignments || ivRes.data.experiments || []);
+            } catch { setInternalViva([]); }
         } catch (err) {
             console.error('Failed to fetch assignment data:', err);
         } finally {
@@ -74,7 +86,11 @@ const TeacherAssignmentSheet = () => {
     };
 
     const saveMarks = async (type, number) => {
-        const maxScore = type === 'assignment' ? config.assignmentMaxScore : config.experimentMaxScore;
+        let maxScore;
+        if (type === 'assignment') maxScore = config.assignmentMaxScore;
+        else if (type === 'experiment') maxScore = config.experimentMaxScore;
+        else maxScore = 5; // lab_attendance, internal_viva
+
         const marks = students.map(s => {
             const inputEl = document.getElementById(`${type}-${number}-${s._id}`);
             const val = inputEl?.value;
@@ -103,7 +119,8 @@ const TeacherAssignmentSheet = () => {
                 maxScore,
                 marks
             });
-            setMessage(`${type === 'assignment' ? 'Assignment' : 'Experiment'} ${number} saved!`);
+            const typeLabel = type === 'assignment' ? 'Assignment' : type === 'experiment' ? 'Experiment' : type === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
+            setMessage(`${typeLabel} ${type === 'lab_attendance' || type === 'internal_viva' ? '' : number + ' '}saved!`);
             fetchData();
             setTimeout(() => setMessage(''), 3000);
         } catch (err) {
@@ -112,6 +129,8 @@ const TeacherAssignmentSheet = () => {
             setSaving(false);
         }
     };
+
+    const getTypeLabel = (t) => t === 'assignment' ? 'Assignment' : t === 'experiment' ? 'Experiment' : t === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
 
     const handleExport = async (type) => {
         try {
@@ -122,7 +141,7 @@ const TeacherAssignmentSheet = () => {
             const url = window.URL.createObjectURL(new Blob([res.data]));
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${decodedSubject}_${type === 'assignment' ? 'Assignment' : 'Experiment'}_Marks.xlsx`;
+            a.download = `${decodedSubject}_${getTypeLabel(type).replace(/\s/g, '_')}_Marks.xlsx`;
             a.click();
             window.URL.revokeObjectURL(url);
         } catch (err) {
@@ -140,7 +159,7 @@ const TeacherAssignmentSheet = () => {
             const url = window.URL.createObjectURL(new Blob([res.data]));
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${decodedSubject}_${uploadType === 'assignment' ? 'Assignment' : 'Experiment'}_Template.xlsx`;
+            a.download = `${decodedSubject}_${getTypeLabel(uploadType).replace(/\s/g, '_')}_Template.xlsx`;
             a.click();
             window.URL.revokeObjectURL(url);
         } catch (err) {
@@ -183,10 +202,11 @@ const TeacherAssignmentSheet = () => {
 
     if (loading) return <div className="loading"><div className="spinner"></div></div>;
 
-    const activeRecords = activeTab === 'assignment' ? assignments : experiments;
-    const totalCount = activeTab === 'assignment' ? config.totalAssignments : config.totalExperiments;
-    const maxScore = activeTab === 'assignment' ? config.assignmentMaxScore : config.experimentMaxScore;
-    const label = activeTab === 'assignment' ? 'Assignment' : 'Experiment';
+    const activeRecords = activeTab === 'assignment' ? assignments : activeTab === 'experiment' ? experiments : activeTab === 'lab_attendance' ? labAttendance : internalViva;
+    const isTWComponent = activeTab === 'lab_attendance' || activeTab === 'internal_viva';
+    const totalCount = isTWComponent ? 1 : (activeTab === 'assignment' ? config.totalAssignments : config.totalExperiments);
+    const maxScore = isTWComponent ? 5 : (activeTab === 'assignment' ? config.assignmentMaxScore : config.experimentMaxScore);
+    const label = activeTab === 'assignment' ? 'Assignment' : activeTab === 'experiment' ? 'Experiment' : activeTab === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
 
     return (
         <div className="page-container">
@@ -222,7 +242,7 @@ const TeacherAssignmentSheet = () => {
             )}
 
             {/* Upload Modal */}
-            {showUploadModal && (
+            {showUploadModal && createPortal(
                 <>
                     <div style={{
                         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -230,14 +250,14 @@ const TeacherAssignmentSheet = () => {
                     }} onClick={() => setShowUploadModal(false)}></div>
                     <div style={{
                         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                        background: 'var(--white)', borderRadius: '16px', padding: '28px',
+                        background: 'var(--white, #ffffff)', borderRadius: '16px', padding: '28px',
                         width: '90%', maxWidth: '480px', zIndex: 9999,
                         boxShadow: '0 20px 60px rgba(0,0,0,0.3)', color: 'var(--gray-800)'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h3 style={{ margin: 0, fontSize: '18px' }}>
                                 <FiUpload style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-                                Upload {uploadType === 'assignment' ? 'Assignment' : 'Experiment'} Marks
+                                Upload {getTypeLabel(uploadType)} Marks
                             </h3>
                             <button onClick={() => setShowUploadModal(false)}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px' }}>
@@ -254,7 +274,7 @@ const TeacherAssignmentSheet = () => {
                                 Download the template first, fill in the scores, then upload the completed file.
                             </p>
                             <button className="btn btn-outline btn-sm" onClick={handleDownloadTemplate} style={{ width: '100%' }}>
-                                <FiDownload style={{ marginRight: '6px' }} /> Download {uploadType === 'assignment' ? 'Assignment' : 'Experiment'} Template
+                                <FiDownload style={{ marginRight: '6px' }} /> Download {getTypeLabel(uploadType)} Template
                             </button>
                         </div>
 
@@ -303,7 +323,8 @@ const TeacherAssignmentSheet = () => {
                             </button>
                         </div>
                     </div>
-                </>
+                </>,
+                document.body
             )}
 
             {/* Config Panel */}
@@ -341,8 +362,7 @@ const TeacherAssignmentSheet = () => {
                 </div>
             )}
 
-            {/* Tabs */}
-            <div style={{ display: 'flex', gap: '4px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 <button
                     className={`btn ${activeTab === 'assignment' ? 'btn-primary' : 'btn-outline'}`}
                     onClick={() => setActiveTab('assignment')}
@@ -356,6 +376,20 @@ const TeacherAssignmentSheet = () => {
                     style={{ borderRadius: '8px 8px 0 0' }}
                 >
                     Experiments ({config.totalExperiments})
+                </button>
+                <button
+                    className={`btn ${activeTab === 'lab_attendance' ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setActiveTab('lab_attendance')}
+                    style={{ borderRadius: '8px 8px 0 0' }}
+                >
+                    Lab Attendance (/5)
+                </button>
+                <button
+                    className={`btn ${activeTab === 'internal_viva' ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setActiveTab('internal_viva')}
+                    style={{ borderRadius: '8px 8px 0 0' }}
+                >
+                    Internal Viva (/5)
                 </button>
             </div>
 

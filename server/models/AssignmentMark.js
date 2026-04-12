@@ -13,7 +13,7 @@ const assignmentMarkSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['assignment', 'experiment'],
+        enum: ['assignment', 'experiment', 'lab_attendance', 'internal_viva'],
         required: true
     },
     number: {

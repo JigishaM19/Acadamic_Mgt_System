@@ -1,48 +1,9 @@
 /**
  * Academic Calculation Utility
- * Centralized IA, attendance, and eligibility calculations
+ * ATTENDANCE-ONLY functions (slab system preserved)
+ * 
+ * For marks/grades/IA calculations, see markCalculationService.js
  */
-
-/**
- * Calculate Unit Test IA contribution
- * If multiple UTs: average them first, then scale to weight
- * @param {number[]} utScores - Array of UT scores obtained
- * @param {number} maxMarks - Max marks for each UT (e.g., 20)
- * @param {number} utWeight - IA weight for UT component (e.g., 10)
- * @returns {number} UT IA marks (rounded to 2 decimal places)
- */
-function calcUTIA(utScores, maxMarks, utWeight) {
-    if (!utScores || utScores.length === 0 || maxMarks <= 0) return 0;
-    const validScores = utScores.filter(s => s !== null && s !== undefined);
-    if (validScores.length === 0) return 0;
-
-    const average = validScores.reduce((sum, s) => sum + s, 0) / validScores.length;
-    return Math.round(((average / maxMarks) * utWeight) * 100) / 100;
-}
-
-/**
- * Calculate Assignment IA contribution
- * @param {number} marksObtained
- * @param {number} maxMarks
- * @param {number} assignmentWeight - IA weight for assignment component (e.g., 5)
- * @returns {number}
- */
-function calcAssignmentIA(marksObtained, maxMarks, assignmentWeight) {
-    if (marksObtained === null || marksObtained === undefined || maxMarks <= 0) return 0;
-    return Math.round(((marksObtained / maxMarks) * assignmentWeight) * 100) / 100;
-}
-
-/**
- * Calculate Practical IA contribution
- * @param {number} marksObtained
- * @param {number} maxMarks
- * @param {number} practicalWeight
- * @returns {number}
- */
-function calcPracticalIA(marksObtained, maxMarks, practicalWeight) {
-    if (marksObtained === null || marksObtained === undefined || maxMarks <= 0) return 0;
-    return Math.round(((marksObtained / maxMarks) * practicalWeight) * 100) / 100;
-}
 
 /**
  * Calculate subject-level attendance percentage
@@ -76,7 +37,6 @@ function calcOverallAttendance(subjectStats) {
  */
 function getAttendanceSlab(percentage, slabs) {
     if (!slabs || slabs.length === 0) return 0;
-    // Sort descending by min to ensure correct lookup
     const sorted = [...slabs].sort((a, b) => b.min - a.min);
     for (const slab of sorted) {
         if (percentage >= slab.min) {
@@ -87,27 +47,15 @@ function getAttendanceSlab(percentage, slabs) {
 }
 
 /**
- * Calculate Attendance IA contribution
+ * Calculate Attendance Marks using slab multiplier
  * @param {number} percentage - Attendance percentage
- * @param {number} attendanceWeight - IA weight for attendance component (e.g., 5)
+ * @param {number} attendanceWeight - Weight for attendance component (e.g., 5)
  * @param {{ min: number, multiplier: number }[]} slabs
  * @returns {number}
  */
-function calcAttendanceIA(percentage, attendanceWeight, slabs) {
+function calcAttendanceMarks(percentage, attendanceWeight, slabs) {
     const multiplier = getAttendanceSlab(percentage, slabs);
     return Math.round((attendanceWeight * multiplier) * 100) / 100;
-}
-
-/**
- * Calculate total IA
- * @param {number} utIA
- * @param {number} assignmentIA
- * @param {number} attendanceIA
- * @param {number} practicalIA
- * @returns {number}
- */
-function calcTotalIA(utIA, assignmentIA, attendanceIA, practicalIA = 0) {
-    return Math.round((utIA + assignmentIA + attendanceIA + practicalIA) * 100) / 100;
 }
 
 /**
@@ -122,7 +70,6 @@ function isEligible(attendancePercent, minPercent) {
 
 /**
  * Calculate required classes to reach minimum attendance
- * Formula: required = ((minPercent/100 * totalConducted) - attended) / (1 - minPercent/100)
  * @param {number} conducted - Total classes conducted
  * @param {number} attended - Classes attended
  * @param {number} minPercent - Minimum required percentage (e.g., 75)
@@ -140,14 +87,10 @@ function requiredClasses(conducted, attended, minPercent) {
 }
 
 module.exports = {
-    calcUTIA,
-    calcAssignmentIA,
-    calcPracticalIA,
     calcAttendancePercent,
     calcOverallAttendance,
     getAttendanceSlab,
-    calcAttendanceIA,
-    calcTotalIA,
+    calcAttendanceMarks,
     isEligible,
     requiredClasses
 };

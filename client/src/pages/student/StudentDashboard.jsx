@@ -283,72 +283,72 @@ const StudentDashboard = () => {
                 </div>
             </div>
 
-            {/* IA Score Summary */}
-            {stats?.iaStats && stats.iaStats.length > 0 && (
+            {/* Marks Overview */}
+            {stats?.marksStats && stats.marksStats.length > 0 && (
                 <div className="card" style={{ marginBottom: '24px' }}>
                     <div className="card-header">
-                        <h2 className="card-title"><FiBarChart2 style={{ marginRight: '6px' }} /> Internal Assessment Summary</h2>
+                        <h2 className="card-title"><FiBarChart2 style={{ marginRight: '6px' }} /> Marks Overview</h2>
                         <p style={{ margin: 0, color: 'var(--gray-500)', fontSize: '0.9rem' }}>
                             Overall Attendance: {stats?.overallAttendance?.toFixed(0) || 0}%
                         </p>
                     </div>
-                    <div className="table-container">
-                        <table className="table">
+                    <div className="table-container" style={{ overflowX: 'auto' }}>
+                        <table className="data-table" style={{ fontSize: '13px' }}>
                             <thead>
                                 <tr>
                                     <th>Subject</th>
-                                    <th style={{ textAlign: 'center' }}>UT IA</th>
-                                    <th style={{ textAlign: 'center' }}>Assignment IA</th>
-                                    <th style={{ textAlign: 'center' }}>Attendance IA</th>
-                                    <th style={{ textAlign: 'center' }}>Total IA</th>
+                                    <th style={{ textAlign: 'center' }}>Final IA<br/><small>/20</small></th>
+                                    <th style={{ textAlign: 'center' }}>TW<br/><small>/25</small></th>
+                                    <th style={{ textAlign: 'center' }}>Oral<br/><small>/25</small></th>
+                                    <th style={{ textAlign: 'center' }}>ESE<br/><small>/80</small></th>
+                                    <th style={{ textAlign: 'center' }}>Total<br/><small>/150</small></th>
+                                    <th style={{ textAlign: 'center' }}>%</th>
+                                    <th style={{ textAlign: 'center' }}>Grade</th>
+                                    <th style={{ textAlign: 'center' }}>Att. Marks</th>
                                     <th style={{ textAlign: 'center' }}>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {stats.iaStats.map((ia, index) => {
-                                    const iaTotal = ia.iaTotal || 20;
-                                    const pct = (ia.totalIA / iaTotal) * 100;
-                                    return (
-                                        <tr key={index}>
-                                            <td style={{ fontWeight: '500' }}>{ia.subject}</td>
-                                            <td style={{ textAlign: 'center' }}>{ia.utIA?.toFixed(1) ?? '—'}</td>
-                                            <td style={{ textAlign: 'center' }}>{ia.assignmentIA?.toFixed(1) ?? '—'}</td>
-                                            <td style={{ textAlign: 'center' }}>{ia.attendanceIA?.toFixed(1) ?? '—'}</td>
-                                            <td style={{ textAlign: 'center' }}>
+                                {stats.marksStats.map((ms, index) => (
+                                    <tr key={index}>
+                                        <td style={{ fontWeight: '500' }}>{ms.subject}</td>
+                                        <td style={{ textAlign: 'center' }}>{ms.finalIA ?? '—'}</td>
+                                        <td style={{ textAlign: 'center' }}>{ms.tw ?? '—'}</td>
+                                        <td style={{ textAlign: 'center' }}>{ms.oralExam ?? '—'}</td>
+                                        <td style={{ textAlign: 'center' }}>{ms.ese ?? '—'}</td>
+                                        <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--primary)' }}>
+                                            {ms.total ?? '—'}
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            {ms.percentage !== null ? `${ms.percentage}%` : '—'}
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            {ms.grade ? (
                                                 <span style={{
-                                                    padding: '4px 12px',
-                                                    borderRadius: '12px',
-                                                    fontWeight: '600',
-                                                    fontSize: '13px',
-                                                    background: pct >= 60
-                                                        ? 'rgba(16,185,129,0.1)'
-                                                        : pct >= 40
-                                                            ? 'rgba(245,158,11,0.1)'
-                                                            : 'rgba(239,68,68,0.1)',
-                                                    color: pct >= 60
-                                                        ? 'var(--success)'
-                                                        : pct >= 40
-                                                            ? 'var(--warning)'
-                                                            : 'var(--danger)'
-                                                }}>
-                                                    {ia.totalIA?.toFixed(1)} / {iaTotal}
-                                                </span>
-                                            </td>
-                                            <td style={{ textAlign: 'center' }}>
-                                                <span style={{
-                                                    padding: '3px 10px',
-                                                    borderRadius: '10px',
-                                                    fontSize: '12px',
-                                                    fontWeight: '500',
-                                                    background: ia.eligible !== false ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                                                    color: ia.eligible !== false ? 'var(--success)' : 'var(--danger)'
-                                                }}>
-                                                    {ia.eligible !== false ? <><FiCheckCircle style={{ marginRight: '2px' }} /> Eligible</> : <><FiXCircle style={{ marginRight: '2px' }} /> Ineligible</>}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                                    padding: '3px 10px', borderRadius: '10px',
+                                                    fontWeight: 700, fontSize: '12px',
+                                                    background: ms.grade === 'F' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                                                    color: ms.grade === 'F' ? 'var(--danger)' : 'var(--success)'
+                                                }}>{ms.grade}</span>
+                                            ) : '—'}
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>{ms.attendanceMarks ?? '—'}/5</td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            <span style={{
+                                                padding: '3px 10px', borderRadius: '10px',
+                                                fontSize: '11px', fontWeight: 600,
+                                                background: ms.status === 'PASS' ? 'rgba(16,185,129,0.1)' :
+                                                    ms.status === 'FAIL' ? 'rgba(239,68,68,0.1)' :
+                                                    ms.status === 'DETAINED' ? 'rgba(245,158,11,0.1)' : 'rgba(107,114,128,0.1)',
+                                                color: ms.status === 'PASS' ? '#10b981' :
+                                                    ms.status === 'FAIL' ? '#ef4444' :
+                                                    ms.status === 'DETAINED' ? '#f59e0b' : '#6b7280'
+                                            }}>
+                                                {ms.status || 'INCOMPLETE'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     </div>

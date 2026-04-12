@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { FiArrowLeft, FiSave, FiSettings, FiUpload, FiDownload, FiX, FiFile } from 'react-icons/fi';
@@ -198,7 +199,7 @@ const CCAssignmentSheet = () => {
             )}
 
             {/* Upload Modal */}
-            {showUploadModal && (
+            {showUploadModal && createPortal(
                 <>
                     <div style={{
                         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -206,7 +207,7 @@ const CCAssignmentSheet = () => {
                     }} onClick={() => setShowUploadModal(false)}></div>
                     <div style={{
                         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                        background: 'var(--white)', borderRadius: '16px', padding: '28px',
+                        background: 'var(--white, #ffffff)', borderRadius: '16px', padding: '28px',
                         width: '90%', maxWidth: '480px', zIndex: 9999,
                         boxShadow: '0 20px 60px rgba(0,0,0,0.3)', color: 'var(--gray-800)'
                     }}>
@@ -279,7 +280,8 @@ const CCAssignmentSheet = () => {
                             </button>
                         </div>
                     </div>
-                </>
+                </>,
+                document.body
             )}
 
             {showConfig && (

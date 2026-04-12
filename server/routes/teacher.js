@@ -7,7 +7,7 @@ const Class = require('../models/Class');
 const Timetable = require('../models/Timetable');
 const Attendance = require('../models/Attendance');
 const Test = require('../models/Test');
-const TestType = require('../models/TestType');
+const { FIXED_TEST_TYPES, calcFinalScore, buildTWBreakdown } = require('../utils/markCalculationService');
 const TimeSlot = require('../models/TimeSlot');
 const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
@@ -746,11 +746,10 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
 // ============================================
 
 // @route   GET /api/teacher/test-types
-// @desc    Get available test types
+// @desc    Get fixed test types (hardcoded)
 router.get('/test-types', async (req, res) => {
     try {
-        const testTypes = await TestType.find({ isActive: true }).sort({ name: 1 });
-        res.json(testTypes);
+        res.json(FIXED_TEST_TYPES);
     } catch (error) {
         console.error('Get test types error:', error);
         res.status(500).json({ message: 'Server error' });
@@ -848,7 +847,7 @@ router.get('/tests/:classId/:subject', async (req, res) => {
         const students = await User.find({
             role: 'student',
             classId
-        }).select('fullName username').sort({ fullName: 1 });
+        }).select('fullName lastName username').sort({ lastName: 1 });
 
         // Get class details
         const classDoc = await Class.findById(classId).populate('departmentId');
@@ -885,9 +884,9 @@ router.get('/tests/:classId/:subject', async (req, res) => {
     }
 });
 
-// @route   GET /api/teacher/tests/:classId/:subject/ia-preview
-// @desc    Get IA preview for all students in a class-subject
-router.get('/tests/:classId/:subject/ia-preview', async (req, res) => {
+// @route   GET /api/teacher/tests/:classId/:subject/marks-summary
+// @desc    Get full marks summary for all students in a class-subject (new system)
+router.get('/tests/:classId/:subject/marks-summary', async (req, res) => {
     try {
         const teacherId = req.teacherId;
         const { classId, subject } = req.params;
@@ -900,132 +899,112 @@ router.get('/tests/:classId/:subject/ia-preview', async (req, res) => {
 
         const settings = await AcademicSettings.getSettings();
         const students = await User.find({ role: 'student', classId })
-            .select('fullName username').sort({ fullName: 1 });
+            .select('fullName lastName username').sort({ lastName: 1 });
         const tests = await Test.find({ classId, subject });
         const attendanceRecords = await Attendance.find({ classId, subject });
 
-        // Build category map from TestType collection
-        const allTestTypes = await TestType.find({});
-        const categoryMap = {};
-        for (const tt of allTestTypes) {
-            categoryMap[tt.name] = tt.category || 'ut';
-        }
-
-        // Fetch assignment/experiment marks from AssignmentMark model
+        // Fetch assignment/experiment marks
         const assignmentMarkRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
         const experimentMarkRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
+        const labAttendanceRecords = await AssignmentMark.find({ classId, subject, type: 'lab_attendance' });
+        const internalVivaRecords = await AssignmentMark.find({ classId, subject, type: 'internal_viva' });
+        const config = await SubjectConfig.findOne({ classId, subject });
 
-        const iaPreview = [];
+        const marksSummary = [];
         for (const student of students) {
             const sid = student._id.toString();
 
             // Attendance
-            let totalLectures = 0;
-            let attended = 0;
+            let totalLectures = 0, attended = 0;
             for (const record of attendanceRecords) {
                 const sr = record.records.find(r => r.studentId.toString() === sid);
-                if (sr) {
-                    totalLectures++;
-                    if (sr.status === 'present') attended++;
-                }
+                if (sr) { totalLectures++; if (sr.status === 'present') attended++; }
             }
             const attPercent = academicCalc.calcAttendancePercent(attended, totalLectures);
+            const attendanceMarks = academicCalc.calcAttendanceMarks(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
 
-            // Scores by category
-            const utScores = [];
-            let utMaxMarks = 20;
-            const assignmentScores = [];
-            let assignmentMax = 0;
+            // Get test scores by type
+            const getTestScore = (testType) => {
+                const test = tests.find(t => t.testType === testType);
+                if (!test) return null;
+                const mark = test.marks.find(m => m.studentId.toString() === sid);
+                return mark?.score ?? null;
+            };
 
-            for (const test of tests) {
-                const studentMark = test.marks.find(m => m.studentId.toString() === sid);
-                const score = studentMark?.score;
-                const cat = categoryMap[test.testType] || 'ut';
+            const ia1 = getTestScore('IA1');
+            const ia2 = getTestScore('IA2');
+            const ese = getTestScore('ESE');
+            const oralExam = getTestScore('Oral Exam');
 
-                if (cat === 'ut') {
-                    if (score !== null && score !== undefined) utScores.push(score);
-                    utMaxMarks = test.maxScore;
-                } else if (cat === 'assignment') {
-                    if (score !== null && score !== undefined) assignmentScores.push(score);
-                    assignmentMax = Math.max(assignmentMax, test.maxScore);
-                }
-            }
-
-            // Assignment marks from AssignmentMark model
-            for (const am of assignmentMarkRecords) {
-                const sm = am.marks.find(m => m.studentId.toString() === sid);
-                if (sm?.score !== null && sm?.score !== undefined) {
-                    assignmentScores.push(sm.score);
-                    assignmentMax = Math.max(assignmentMax, am.maxScore);
-                }
-            }
-
-            // Experiment/practical marks from AssignmentMark model
-            const practicalScores = [];
-            let practicalMax = 0;
-            for (const em of experimentMarkRecords) {
+            // Build TW from assignment data
+            const expScores = experimentMarkRecords.map(em => {
                 const sm = em.marks.find(m => m.studentId.toString() === sid);
-                if (sm?.score !== null && sm?.score !== undefined) {
-                    practicalScores.push(sm.score);
-                    practicalMax = Math.max(practicalMax, em.maxScore);
-                }
+                return sm?.score ?? null;
+            }).filter(s => s !== null);
+            const assignScores = assignmentMarkRecords.map(am => {
+                const sm = am.marks.find(m => m.studentId.toString() === sid);
+                return sm?.score ?? null;
+            }).filter(s => s !== null);
+
+            // Lab attendance & internal viva (single value per student)
+            let labAttScore = 0;
+            if (labAttendanceRecords.length > 0) {
+                const sm = labAttendanceRecords[0].marks.find(m => m.studentId.toString() === sid);
+                labAttScore = sm?.score ?? 0;
+            }
+            let vivaScore = 0;
+            if (internalVivaRecords.length > 0) {
+                const sm = internalVivaRecords[0].marks.find(m => m.studentId.toString() === sid);
+                vivaScore = sm?.score ?? 0;
             }
 
-            const utIA = academicCalc.calcUTIA(utScores, utMaxMarks, settings.utWeight);
-            const assignmentIA = assignmentScores.length > 0
-                ? academicCalc.calcAssignmentIA(
-                    assignmentScores.reduce((a, b) => a + b, 0) / assignmentScores.length,
-                    assignmentMax,
-                    settings.assignmentWeight
-                ) : 0;
-            const practicalIA = practicalScores.length > 0
-                ? academicCalc.calcPracticalIA(
-                    practicalScores.reduce((a, b) => a + b, 0) / practicalScores.length,
-                    practicalMax,
-                    settings.practicalWeight
-                ) : 0;
-            const attendanceIA = academicCalc.calcAttendanceIA(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
-            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA, practicalIA);
+            const twData = buildTWBreakdown(
+                expScores, config?.experimentMaxScore || 10,
+                assignScores, config?.assignmentMaxScore || 10,
+                labAttScore, vivaScore
+            );
 
-            iaPreview.push({
+            const marks = { ia1, ia2, ese, oralExam, tw: twData.total, twBreakdown: twData };
+            const finalScore = calcFinalScore(marks, attPercent);
+
+            marksSummary.push({
                 studentId: student._id,
                 fullName: student.fullName,
                 username: student.username,
-                utIA,
-                assignmentIA,
-                practicalIA,
-                attendanceIA,
-                totalIA,
-                iaTotal: settings.iaTotal,
-                attendancePercent: attPercent,
-                eligible: academicCalc.isEligible(attPercent, settings.minAttendancePercent)
+                ...finalScore,
+                attendanceMarks,
+                eligible: academicCalc.isEligible(attPercent, settings.minAttendancePercent),
+                classesNeeded: academicCalc.requiredClasses(totalLectures, attended, settings.minAttendancePercent)
             });
         }
 
-        res.json({ iaPreview, settings: { iaTotal: settings.iaTotal } });
+        res.json({ marksSummary, testTypes: FIXED_TEST_TYPES });
     } catch (error) {
-        console.error('IA preview error:', error);
+        console.error('Marks summary error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // @route   POST /api/teacher/tests
-// @desc    Create new test record
+// @desc    Create or update test record (upsert by classId+subject+testType)
 router.post('/tests', async (req, res) => {
     try {
         const teacherId = req.teacherId;
-        const { classId, subject, testType, date, maxScore, marks } = req.body;
+        const { classId, subject, testType, marks } = req.body;
+
+        // Validate test type is one of the fixed types (exclude Term Work)
+        const validType = FIXED_TEST_TYPES.find(t => t.name === testType && t.editable);
+        if (!validType) {
+            return res.status(400).json({ message: `Invalid test type: ${testType}. Must be one of: ${FIXED_TEST_TYPES.filter(t => t.editable).map(t => t.name).join(', ')}` });
+        }
 
         // Verify teacher teaches this class-subject
-        const timetableEntry = await Timetable.findOne({
-            teacherId,
-            classId,
-            subject
-        });
-
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject });
         if (!timetableEntry) {
             return res.status(403).json({ message: 'You do not teach this class-subject combination' });
         }
+
+        const maxScore = validType.maxScore;
 
         // Validate marks don't exceed maxScore
         for (const mark of marks) {
@@ -1034,33 +1013,26 @@ router.post('/tests', async (req, res) => {
             }
         }
 
-        const test = new Test({
-            classId,
-            subject,
-            teacherId,
-            testType,
-            date: new Date(date),
-            maxScore,
-            marks
-        });
+        // Upsert: one test per classId+subject+testType
+        const test = await Test.findOneAndUpdate(
+            { classId, subject, testType },
+            { teacherId, maxScore, marks, date: new Date() },
+            { upsert: true, new: true }
+        );
 
-        await test.save();
         res.status(201).json(test);
     } catch (error) {
         console.error('Create test error:', error);
-        if (error.code === 11000) {
-            return res.status(400).json({ message: 'A test with this type already exists for this class-subject on this date' });
-        }
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // @route   PUT /api/teacher/tests/:id
-// @desc    Update test record
+// @desc    Update test record marks
 router.put('/tests/:id', async (req, res) => {
     try {
         const teacherId = req.teacherId;
-        const { marks, maxScore } = req.body;
+        const { marks } = req.body;
 
         const test = await Test.findOne({
             _id: req.params.id,
@@ -1071,17 +1043,14 @@ router.put('/tests/:id', async (req, res) => {
             return res.status(404).json({ message: 'Test record not found or access denied' });
         }
 
-        // Validate marks don't exceed maxScore
-        const effectiveMaxScore = maxScore !== undefined ? maxScore : test.maxScore;
+        // maxScore is fixed by the test type, cannot be changed
         for (const mark of marks) {
-            if (mark.score !== null && mark.score !== undefined && mark.score > effectiveMaxScore) {
-                return res.status(400).json({ message: `Score cannot exceed max score of ${effectiveMaxScore}` });
+            if (mark.score !== null && mark.score !== undefined && mark.score > test.maxScore) {
+                return res.status(400).json({ message: `Score cannot exceed max score of ${test.maxScore}` });
             }
         }
 
-        if (maxScore !== undefined) test.maxScore = maxScore;
         test.marks = marks;
-
         await test.save();
         res.json(test);
     } catch (error) {
@@ -1108,6 +1077,248 @@ router.delete('/tests/:id', async (req, res) => {
         res.json({ message: 'Test record deleted' });
     } catch (error) {
         console.error('Delete test error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/teacher/tests/:classId/:subject/template
+// @desc    Download Excel template for test marks bulk upload
+router.get('/tests/:classId/:subject/template', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const teacherId = req.teacherId;
+        const { classId, subject } = req.params;
+        const decodedSubject = decodeURIComponent(subject);
+
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject: decodedSubject });
+        if (!timetableEntry) return res.status(403).json({ message: 'Access denied' });
+
+        const students = await User.find({ role: 'student', classId })
+            .select('fullName lastName username').sort({ lastName: 1 });
+
+        const testTypes = [
+            { name: 'IA1', maxScore: 20 },
+            { name: 'IA2', maxScore: 20 },
+            { name: 'ESE', maxScore: 80 },
+            { name: 'Oral Exam', maxScore: 25 }
+        ];
+
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Test Marks Template');
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        ws.addRow([`Test Marks Template - ${decodedSubject}`]).font = { bold: true, size: 14 };
+        ws.addRow(['IA1: /20, IA2: /20, ESE: /80, Oral Exam: /25']).font = { bold: true, color: { argb: 'FFFF0000' } };
+        ws.addRow(['Instructions: Fill scores within max limits. Do NOT change Roll No column.']).font = { italic: true, color: { argb: 'FF666666' } };
+        ws.addRow([]);
+
+        const headers = ['Roll No', 'Student Name', ...testTypes.map(t => `${t.name} (/${t.maxScore})`)];
+        const headerRow = ws.addRow(headers);
+        headerRow.eachCell(cell => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+
+        for (let idx = 0; idx < students.length; idx++) {
+            const student = students[idx];
+            const row = [student.username || (idx + 1), student.fullName, '', '', '', ''];
+            const dataRow = ws.addRow(row);
+            dataRow.eachCell((cell, colNumber) => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center' };
+                if (colNumber > 2) {
+                    const tt = testTypes[colNumber - 3];
+                    if (tt) {
+                        cell.dataValidation = {
+                            type: 'decimal', operator: 'between',
+                            formulae: [0, tt.maxScore],
+                            showErrorMessage: true,
+                            errorTitle: 'Invalid Score',
+                            error: `Score must be between 0 and ${tt.maxScore}`
+                        };
+                    }
+                }
+            });
+        }
+
+        ws.getColumn(1).width = 14;
+        ws.getColumn(2).width = 28;
+        for (let i = 3; i <= 6; i++) ws.getColumn(i).width = 18;
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_Test_Marks_Template.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('Test template error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/teacher/tests/:classId/:subject/export
+// @desc    Export test marks to Excel
+router.get('/tests/:classId/:subject/export', async (req, res) => {
+    try {
+        const ExcelJS = require('exceljs');
+        const teacherId = req.teacherId;
+        const { classId, subject } = req.params;
+        const decodedSubject = decodeURIComponent(subject);
+
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject: decodedSubject });
+        if (!timetableEntry) return res.status(403).json({ message: 'Access denied' });
+
+        const students = await User.find({ role: 'student', classId })
+            .select('fullName lastName username').sort({ lastName: 1 });
+        const classDoc = await Class.findById(classId).populate('departmentId');
+        const tests = await Test.find({ classId, subject: decodedSubject, teacherId });
+
+        const testTypes = [
+            { name: 'IA1', maxScore: 20 },
+            { name: 'IA2', maxScore: 20 },
+            { name: 'ESE', maxScore: 80 },
+            { name: 'Oral Exam', maxScore: 25 }
+        ];
+
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Test Marks');
+        const thinBorder = { style: 'thin' };
+        const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+        ws.addRow([`Test Marks - ${decodedSubject}`]).font = { bold: true, size: 14 };
+        ws.addRow([`Class: ${classDoc?.name || 'N/A'} | Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
+        ws.addRow(['IA1: /20, IA2: /20, ESE: /80, Oral Exam: /25']).font = { bold: true };
+        ws.addRow([]);
+
+        const headers = ['Roll No', 'Student Name', ...testTypes.map(t => `${t.name} (/${t.maxScore})`)];
+        const headerRow = ws.addRow(headers);
+        headerRow.eachCell(cell => {
+            cell.font = { bold: true };
+            cell.border = allBorders;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+
+        for (let idx = 0; idx < students.length; idx++) {
+            const student = students[idx];
+            const row = [student.username || (idx + 1), student.fullName];
+            for (const tt of testTypes) {
+                const test = tests.find(t => t.testType === tt.name);
+                const mark = test?.marks?.find(m => m.studentId.toString() === student._id.toString());
+                row.push(mark?.score ?? '');
+            }
+            const dataRow = ws.addRow(row);
+            dataRow.eachCell((cell, colNumber) => {
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center' };
+                if (colNumber > 2 && cell.value !== '' && cell.value !== null) {
+                    const tt = testTypes[colNumber - 3];
+                    const pct = tt ? (cell.value / tt.maxScore) * 100 : 0;
+                    if (pct < 40) {
+                        cell.font = { color: { argb: 'FFFF0000' } };
+                    }
+                }
+            });
+        }
+
+        ws.getColumn(1).width = 14;
+        ws.getColumn(2).width = 28;
+        for (let i = 3; i <= 6; i++) ws.getColumn(i).width = 18;
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_Test_Marks.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('Test export error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   POST /api/teacher/tests/upload
+// @desc    Upload Excel for bulk test marks
+router.post('/tests/upload', upload.single('file'), async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+        const { classId, subject } = req.body;
+        const decodedSubject = subject;
+        const timetableEntry = await Timetable.findOne({ teacherId, classId, subject: decodedSubject });
+        if (!timetableEntry) return res.status(403).json({ message: 'Access denied' });
+
+        const testTypes = [
+            { name: 'IA1', maxScore: 20 },
+            { name: 'IA2', maxScore: 20 },
+            { name: 'ESE', maxScore: 80 },
+            { name: 'Oral Exam', maxScore: 25 }
+        ];
+
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        let data = XLSX.utils.sheet_to_json(sheet, { range: 4 });
+        if (data.length === 0 || (!data[0]?.['Roll No'] && !data[0]?.['Username'] && !data[0]?.['Student Name'])) {
+            data = XLSX.utils.sheet_to_json(sheet);
+        }
+
+        const students = await User.find({ role: 'student', classId }).select('fullName username').sort({ lastName: 1 });
+        const usernameMap = {};
+        const nameMap = {};
+        students.forEach(s => {
+            if (s.username) usernameMap[s.username.toLowerCase()] = s._id.toString();
+            if (s.fullName) nameMap[s.fullName.toLowerCase().trim()] = s._id.toString();
+        });
+
+        let savedCount = 0;
+        const errors = [];
+
+        // Find columns in uploaded data matching test type names
+        const sampleRow = data[0] || {};
+        const colKeys = Object.keys(sampleRow);
+
+        for (const tt of testTypes) {
+            // Match column like "IA1 (/20)" or "IA1" or "IA1 (20)"
+            const colName = colKeys.find(k => k.startsWith(tt.name));
+            if (!colName) continue;
+
+            const marks = [];
+            for (const row of data) {
+                const rollNo = (row['Roll No'] || row['rollNo'] || row['Username'] || '').toString().trim().toLowerCase();
+                const studentName = (row['Student Name'] || row['Name'] || '').toString().trim().toLowerCase();
+                let studentId = usernameMap[rollNo] || nameMap[studentName] || nameMap[rollNo];
+                if (!studentId && /^\d+$/.test(rollNo)) {
+                    const idx = parseInt(rollNo) - 1;
+                    if (idx >= 0 && idx < students.length) studentId = students[idx]._id.toString();
+                }
+                if (!studentId) { if (rollNo) errors.push(`Student not found: ${rollNo}`); continue; }
+                const score = row[colName];
+                if (score !== '' && score !== undefined && score !== null) {
+                    const numScore = parseFloat(score);
+                    if (numScore > tt.maxScore) {
+                        errors.push(`${tt.name}: Score ${numScore} exceeds max ${tt.maxScore} for ${rollNo}`);
+                        continue;
+                    }
+                    marks.push({ studentId, score: numScore });
+                } else {
+                    marks.push({ studentId, score: null });
+                }
+            }
+
+            if (marks.length > 0) {
+                await Test.findOneAndUpdate(
+                    { classId, subject: decodedSubject, testType: tt.name, teacherId },
+                    { maxScore: tt.maxScore, marks, date: new Date() },
+                    { upsert: true, new: true }
+                );
+                savedCount++;
+            }
+        }
+
+        res.json({ message: `Uploaded ${savedCount} test type(s) successfully`, errors });
+    } catch (error) {
+        console.error('Test upload error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -1202,11 +1413,13 @@ router.post('/assignment-config', async (req, res) => {
 
 // @route   GET /api/teacher/assignments/:classId/:subject
 // @desc    Get all assignment/experiment marks for a class-subject
+//          Supports ?type=lab_attendance or ?type=internal_viva for TW sub-components
 router.get('/assignments/:classId/:subject', async (req, res) => {
     try {
         const teacherId = req.teacherId;
         const { classId, subject } = req.params;
         const decodedSubject = decodeURIComponent(subject);
+        const queryType = req.query.type;
 
         const timetableEntry = await Timetable.findOne({ teacherId, classId, subject: decodedSubject });
         if (!timetableEntry) {
@@ -1217,6 +1430,25 @@ router.get('/assignments/:classId/:subject', async (req, res) => {
             .select('fullName lastName username').sort({ lastName: 1 });
         const classDoc = await Class.findById(classId).populate('departmentId');
         const config = await SubjectConfig.findOne({ classId, subject: decodedSubject });
+
+        // If a specific type is requested (e.g., lab_attendance, internal_viva)
+        if (queryType && ['lab_attendance', 'internal_viva'].includes(queryType)) {
+            const records = await AssignmentMark.find({ classId, subject: decodedSubject, type: queryType }).sort({ number: 1 });
+            return res.json({
+                classInfo: {
+                    classId,
+                    className: classDoc?.name || 'N/A',
+                    year: classDoc?.year,
+                    department: classDoc?.departmentId?.name || 'N/A',
+                    subject: decodedSubject
+                },
+                config: config || { totalAssignments: 0, totalExperiments: 0, assignmentMaxScore: 10, experimentMaxScore: 10 },
+                students,
+                assignments: records,
+                experiments: []
+            });
+        }
+
         const assignments = await AssignmentMark.find({ classId, subject: decodedSubject, type: 'assignment' }).sort({ number: 1 });
         const experiments = await AssignmentMark.find({ classId, subject: decodedSubject, type: 'experiment' }).sort({ number: 1 });
 
@@ -1272,7 +1504,7 @@ router.post('/assignments', async (req, res) => {
 });
 
 // @route   POST /api/teacher/assignments/upload
-// @desc    Upload Excel for bulk assignment/experiment marks
+// @desc    Upload Excel for bulk assignment/experiment/lab_attendance/internal_viva marks
 router.post('/assignments/upload', upload.single('file'), async (req, res) => {
     try {
         const teacherId = req.teacherId;
@@ -1284,22 +1516,20 @@ router.post('/assignments/upload', upload.single('file'), async (req, res) => {
             return res.status(403).json({ message: 'You do not teach this class-subject' });
         }
 
+        const isTWComponent = type === 'lab_attendance' || type === 'internal_viva';
         const config = await SubjectConfig.findOne({ classId, subject });
-        const totalCount = type === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
-        const maxScore = type === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
+        const totalCount = isTWComponent ? 1 : (type === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0));
+        const maxScore = isTWComponent ? 5 : (type === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10));
 
         const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         // Template has 4 header rows (title, max score, instructions, blank) before actual column headers
-        // Try parsing with range:4 first (for template files), fall back to default (for plain files)
         let data = XLSX.utils.sheet_to_json(sheet, { range: 4 });
         if (data.length === 0 || (!data[0]?.['Roll No'] && !data[0]?.['Username'] && !data[0]?.['Student Name'])) {
-            // Fallback: try without range skip (plain Excel without header rows)
             data = XLSX.utils.sheet_to_json(sheet);
         }
 
         const students = await User.find({ role: 'student', classId }).select('fullName username').sort({ lastName: 1 });
-        // Build lookup maps for matching students by username, full name, or row number
         const usernameMap = {};
         const nameMap = {};
         students.forEach((s, idx) => {
@@ -1309,51 +1539,64 @@ router.post('/assignments/upload', upload.single('file'), async (req, res) => {
 
         let savedCount = 0;
         const errors = [];
-        const label = type === 'assignment' ? 'Assignment' : 'Experiment';
+        const label = type === 'assignment' ? 'Assignment' : type === 'experiment' ? 'Experiment' : type === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
 
-        // Determine columns from header
-        const sampleRow = data[0] || {};
-        const numberCols = Object.keys(sampleRow).filter(k => k.startsWith(label));
-
-        for (let num = 1; num <= totalCount; num++) {
-            const colName = `${label} ${num}`;
-            if (!numberCols.includes(colName)) continue;
-
+        // For TW components (lab_attendance, internal_viva): single "Score" column → number=1
+        if (isTWComponent) {
             const marks = [];
             for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
                 const row = data[rowIdx];
                 const rollNo = (row['Roll No'] || row['rollNo'] || row['Username'] || '').toString().trim().toLowerCase();
                 const studentName = (row['Student Name'] || row['Name'] || '').toString().trim().toLowerCase();
-
-                // Try matching by username first, then by name, then by row index
                 let studentId = usernameMap[rollNo] || nameMap[studentName] || nameMap[rollNo];
-
-                // Fallback: match by row index if Roll No is a sequential number
                 if (!studentId && /^\d+$/.test(rollNo)) {
                     const idx = parseInt(rollNo) - 1;
-                    if (idx >= 0 && idx < students.length) {
-                        studentId = students[idx]._id.toString();
-                    }
+                    if (idx >= 0 && idx < students.length) studentId = students[idx]._id.toString();
                 }
-
-                if (!studentId) {
-                    if (rollNo) errors.push(`Student not found: ${rollNo}`);
-                    continue;
-                }
-                const score = row[colName];
-                marks.push({
-                    studentId,
-                    score: (score === '' || score === undefined || score === null) ? null : parseFloat(score)
-                });
+                if (!studentId) { if (rollNo) errors.push(`Student not found: ${rollNo}`); continue; }
+                const score = row['Score'] ?? row['score'] ?? row[Object.keys(row).find(k => k !== 'Roll No' && k !== 'Student Name' && k !== 'Username' && k !== 'Name')];
+                marks.push({ studentId, score: (score === '' || score === undefined || score === null) ? null : Math.min(parseFloat(score), maxScore) });
             }
-
             if (marks.length > 0) {
                 await AssignmentMark.findOneAndUpdate(
-                    { classId, subject, type, number: num },
+                    { classId, subject, type, number: 1 },
                     { maxScore, marks, teacherId },
                     { upsert: true, new: true }
                 );
                 savedCount++;
+            }
+        } else {
+            // Standard assignment/experiment upload with numbered columns
+            const sampleRow = data[0] || {};
+            const numberCols = Object.keys(sampleRow).filter(k => k.startsWith(label));
+
+            for (let num = 1; num <= totalCount; num++) {
+                const colName = `${label} ${num}`;
+                if (!numberCols.includes(colName)) continue;
+
+                const marks = [];
+                for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
+                    const row = data[rowIdx];
+                    const rollNo = (row['Roll No'] || row['rollNo'] || row['Username'] || '').toString().trim().toLowerCase();
+                    const studentName = (row['Student Name'] || row['Name'] || '').toString().trim().toLowerCase();
+                    let studentId = usernameMap[rollNo] || nameMap[studentName] || nameMap[rollNo];
+                    if (!studentId && /^\d+$/.test(rollNo)) {
+                        const idx = parseInt(rollNo) - 1;
+                        if (idx >= 0 && idx < students.length) studentId = students[idx]._id.toString();
+                    }
+                    if (!studentId) { if (rollNo) errors.push(`Student not found: ${rollNo}`); continue; }
+                    const score = row[colName];
+                    marks.push({ studentId, score: (score === '' || score === undefined || score === null) ? null : parseFloat(score) });
+                }
+
+                if (marks.length > 0) {
+                    await AssignmentMark.findOneAndUpdate(
+                        { classId, subject, type, number: num },
+                        { maxScore, marks, teacherId },
+                        { upsert: true, new: true }
+                    );
+                    savedCount++;
+                }
             }
         }
 
@@ -1365,7 +1608,7 @@ router.post('/assignments/upload', upload.single('file'), async (req, res) => {
 });
 
 // @route   GET /api/teacher/assignments/:classId/:subject/template
-// @desc    Download Excel template for bulk upload
+// @desc    Download Excel template for bulk upload (assignment, experiment, lab_attendance, internal_viva)
 router.get('/assignments/:classId/:subject/template', async (req, res) => {
     try {
         const ExcelJS = require('exceljs');
@@ -1382,9 +1625,10 @@ router.get('/assignments/:classId/:subject/template', async (req, res) => {
         const config = await SubjectConfig.findOne({ classId, subject: decodedSubject });
 
         const markType = type || 'assignment';
-        const total = markType === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
-        const maxScore = markType === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
-        const label = markType === 'assignment' ? 'Assignment' : 'Experiment';
+        const isTWComponent = markType === 'lab_attendance' || markType === 'internal_viva';
+        const total = isTWComponent ? 1 : (markType === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0));
+        const maxScore = isTWComponent ? 5 : (markType === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10));
+        const label = markType === 'assignment' ? 'Assignment' : markType === 'experiment' ? 'Experiment' : markType === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
 
         const workbook = new ExcelJS.Workbook();
         const ws = workbook.addWorksheet(`${label} Template`);
@@ -1392,13 +1636,17 @@ router.get('/assignments/:classId/:subject/template', async (req, res) => {
         const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
 
         ws.addRow([`${label} Marks Template - ${decodedSubject}`]).font = { bold: true, size: 14 };
-        ws.addRow([`Max Score per ${label}: ${maxScore}`]).font = { bold: true, color: { argb: 'FFFF0000' } };
-        ws.addRow([`Instructions: Fill scores (0-${maxScore}) for each ${label.toLowerCase()}. Do NOT change Roll No column.`]).font = { italic: true, color: { argb: 'FF666666' } };
+        ws.addRow([`Max Score: ${maxScore}`]).font = { bold: true, color: { argb: 'FFFF0000' } };
+        ws.addRow([`Instructions: Fill scores (0-${maxScore}). Do NOT change Roll No column.`]).font = { italic: true, color: { argb: 'FF666666' } };
         ws.addRow([]);
 
         // Header row
         const headers = ['Roll No', 'Student Name'];
-        for (let i = 1; i <= total; i++) headers.push(`${label} ${i}`);
+        if (isTWComponent) {
+            headers.push('Score');
+        } else {
+            for (let i = 1; i <= total; i++) headers.push(`${label} ${i}`);
+        }
         const headerRow = ws.addRow(headers);
         headerRow.eachCell(cell => {
             cell.font = { bold: true };
@@ -1407,11 +1655,12 @@ router.get('/assignments/:classId/:subject/template', async (req, res) => {
             cell.alignment = { horizontal: 'center' };
         });
 
-        // Student rows with empty scores - use username as Roll No for upload matching
+        // Student rows
+        const colCount = isTWComponent ? 1 : total;
         for (let idx = 0; idx < students.length; idx++) {
             const student = students[idx];
             const row = [student.username || (idx + 1), student.fullName];
-            for (let i = 0; i < total; i++) row.push('');
+            for (let i = 0; i < colCount; i++) row.push('');
             const dataRow = ws.addRow(row);
             dataRow.eachCell((cell, colNumber) => {
                 cell.border = allBorders;
@@ -1430,10 +1679,10 @@ router.get('/assignments/:classId/:subject/template', async (req, res) => {
 
         ws.getColumn(1).width = 14;
         ws.getColumn(2).width = 28;
-        for (let i = 3; i <= 2 + total; i++) ws.getColumn(i).width = 14;
+        for (let i = 3; i <= 2 + colCount; i++) ws.getColumn(i).width = 14;
 
         const buffer = await workbook.xlsx.writeBuffer();
-        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_${label}_Template.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_${label.replace(/\s/g, '_')}_Template.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(Buffer.from(buffer));
     } catch (error) {
@@ -1443,13 +1692,13 @@ router.get('/assignments/:classId/:subject/template', async (req, res) => {
 });
 
 // @route   GET /api/teacher/assignments/:classId/:subject/export
-// @desc    Export assignment/experiment marks to Excel
+// @desc    Export assignment/experiment/lab_attendance/internal_viva marks to Excel
 router.get('/assignments/:classId/:subject/export', async (req, res) => {
     try {
         const ExcelJS = require('exceljs');
         const teacherId = req.teacherId;
         const { classId, subject } = req.params;
-        const { type } = req.query; // 'assignment' or 'experiment'
+        const { type } = req.query;
         const decodedSubject = decodeURIComponent(subject);
 
         const timetableEntry = await Timetable.findOne({ teacherId, classId, subject: decodedSubject });
@@ -1461,9 +1710,10 @@ router.get('/assignments/:classId/:subject/export', async (req, res) => {
         const config = await SubjectConfig.findOne({ classId, subject: decodedSubject });
 
         const markType = type || 'assignment';
-        const total = markType === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0);
-        const maxScore = markType === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10);
-        const label = markType === 'assignment' ? 'Assignment' : 'Experiment';
+        const isTWComponent = markType === 'lab_attendance' || markType === 'internal_viva';
+        const total = isTWComponent ? 1 : (markType === 'assignment' ? (config?.totalAssignments || 0) : (config?.totalExperiments || 0));
+        const maxScore = isTWComponent ? 5 : (markType === 'assignment' ? (config?.assignmentMaxScore || 10) : (config?.experimentMaxScore || 10));
+        const label = markType === 'assignment' ? 'Assignment' : markType === 'experiment' ? 'Experiment' : markType === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
         const records = await AssignmentMark.find({ classId, subject: decodedSubject, type: markType }).sort({ number: 1 });
 
         const workbook = new ExcelJS.Workbook();
@@ -1473,15 +1723,18 @@ router.get('/assignments/:classId/:subject/export', async (req, res) => {
 
         ws.addRow([`${label} Marks - ${decodedSubject}`]).font = { bold: true, size: 14 };
         ws.addRow([`Class: ${classDoc?.name || 'N/A'} | Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
-        ws.addRow([`Max Score per ${label}: ${maxScore}`]).font = { bold: true };
+        ws.addRow([`Max Score: ${maxScore}`]).font = { bold: true };
         ws.addRow([]);
 
         // Header row
         const headers = ['Roll No', 'Student Name'];
-        for (let i = 1; i <= Math.max(total, records.length); i++) {
-            headers.push(`${label} ${i}`);
+        if (isTWComponent) {
+            headers.push('Score');
+        } else {
+            const colCount = Math.max(total, records.length);
+            for (let i = 1; i <= colCount; i++) headers.push(`${label} ${i}`);
+            headers.push('Average', 'Percentage');
         }
-        headers.push('Average', 'Percentage');
         const headerRow = ws.addRow(headers);
         headerRow.eachCell(cell => {
             cell.font = { bold: true };
@@ -1494,21 +1747,30 @@ router.get('/assignments/:classId/:subject/export', async (req, res) => {
         for (let idx = 0; idx < students.length; idx++) {
             const student = students[idx];
             const row = [idx + 1, student.fullName || `${student.firstName} ${student.lastName}`];
-            let totalScore = 0, count = 0;
-            for (let i = 1; i <= Math.max(total, records.length); i++) {
-                const record = records.find(r => r.number === i);
+
+            if (isTWComponent) {
+                const record = records.find(r => r.number === 1);
                 const mark = record?.marks?.find(m => m.studentId.toString() === student._id.toString());
-                if (mark?.score !== null && mark?.score !== undefined) {
-                    row.push(mark.score);
-                    totalScore += mark.score;
-                    count++;
-                } else {
-                    row.push('');
+                row.push(mark?.score ?? '');
+            } else {
+                let totalScore = 0, count = 0;
+                const colCount = Math.max(total, records.length);
+                for (let i = 1; i <= colCount; i++) {
+                    const record = records.find(r => r.number === i);
+                    const mark = record?.marks?.find(m => m.studentId.toString() === student._id.toString());
+                    if (mark?.score !== null && mark?.score !== undefined) {
+                        row.push(mark.score);
+                        totalScore += mark.score;
+                        count++;
+                    } else {
+                        row.push('');
+                    }
                 }
+                const avg = count > 0 ? (totalScore / count).toFixed(1) : '';
+                const pct = count > 0 ? ((totalScore / (count * maxScore)) * 100).toFixed(0) + '%' : '';
+                row.push(avg, pct);
             }
-            const avg = count > 0 ? (totalScore / count).toFixed(1) : '';
-            const pct = count > 0 ? ((totalScore / (count * maxScore)) * 100).toFixed(0) + '%' : '';
-            row.push(avg, pct);
+
             const dataRow = ws.addRow(row);
             dataRow.eachCell(cell => {
                 cell.border = allBorders;
@@ -1521,7 +1783,7 @@ router.get('/assignments/:classId/:subject/export', async (req, res) => {
         for (let i = 3; i <= headers.length; i++) ws.getColumn(i).width = 14;
 
         const buffer = await workbook.xlsx.writeBuffer();
-        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_${label}_Marks.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_${label.replace(/\s/g, '_')}_Marks.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(Buffer.from(buffer));
     } catch (error) {

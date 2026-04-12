@@ -5,7 +5,7 @@ const Class = require('../models/Class');
 const Timetable = require('../models/Timetable');
 const Attendance = require('../models/Attendance');
 const Test = require('../models/Test');
-const TestType = require('../models/TestType');
+const { FIXED_TEST_TYPES, calcFinalScore, buildTWBreakdown } = require('../utils/markCalculationService');
 const TimeSlot = require('../models/TimeSlot');
 const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
@@ -120,98 +120,69 @@ router.get('/stats', async (req, res) => {
             });
         }
 
-        // Calculate IA per subject
-        const iaStats = [];
-        // Build a category map from TestType collection
-        const allTestTypes = await TestType.find({});
-        const categoryMap = {};
-        for (const tt of allTestTypes) {
-            categoryMap[tt.name] = tt.category || 'ut';
-        }
-
+        // Calculate marks per subject (new system)
+        const marksStats = [];
         for (const subject of timetableEntries) {
-            const tests = await Test.find({ classId, subject }).sort({ date: -1 });
+            const tests = await Test.find({ classId, subject });
 
-            // Collect scores by category
-            const utScores = [];
-            let utMaxMarks = 20;
-            const assignmentScores = [];
-            let assignmentMax = 0;
-            const practicalScores = [];
-            let practicalMax = 0;
+            // Get test scores by type
+            const getTestScore = (testType) => {
+                const test = tests.find(t => t.testType === testType);
+                if (!test) return null;
+                const mark = test.marks.find(m => m.studentId.toString() === studentId.toString());
+                return mark?.score ?? null;
+            };
 
-            for (const test of tests) {
-                const studentMark = test.marks.find(
-                    m => m.studentId.toString() === studentId.toString()
-                );
-                const score = studentMark?.score;
-                const cat = categoryMap[test.testType] || 'ut';
+            const ia1 = getTestScore('IA1');
+            const ia2 = getTestScore('IA2');
+            const ese = getTestScore('ESE');
+            const oralExam = getTestScore('Oral Exam');
 
-                if (cat === 'ut') {
-                    if (score !== null && score !== undefined) utScores.push(score);
-                    utMaxMarks = test.maxScore;
-                } else if (cat === 'assignment') {
-                    if (score !== null && score !== undefined) assignmentScores.push(score);
-                    assignmentMax = Math.max(assignmentMax, test.maxScore);
-                } else if (cat === 'practical') {
-                    if (score !== null && score !== undefined) practicalScores.push(score);
-                    practicalMax = Math.max(practicalMax, test.maxScore);
-                }
-            }
-
-            // Calculate IA components
-            const utIA = academicCalc.calcUTIA(utScores, utMaxMarks, settings.utWeight);
-            const assignmentIA = assignmentScores.length > 0
-                ? academicCalc.calcAssignmentIA(
-                    assignmentScores.reduce((a, b) => a + b, 0) / assignmentScores.length,
-                    assignmentMax,
-                    settings.assignmentWeight
-                ) : 0;
-
-            // Get experiment marks from AssignmentMark model
+            // Build TW from assignment/experiment data
             const experimentRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
-            let practicalScoresArr = [...practicalScores];
-            let practicalMaxVal = practicalMax;
-            for (const em of experimentRecords) {
-                const sm = em.marks.find(m => m.studentId.toString() === studentId.toString());
-                if (sm?.score !== null && sm?.score !== undefined) {
-                    practicalScoresArr.push(sm.score);
-                    practicalMaxVal = Math.max(practicalMaxVal, em.maxScore);
-                }
-            }
-
-            // Get assignment marks from AssignmentMark model
             const assignmentRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
-            for (const am of assignmentRecords) {
+            const labAttRecords = await AssignmentMark.find({ classId, subject, type: 'lab_attendance' });
+            const vivaRecords = await AssignmentMark.find({ classId, subject, type: 'internal_viva' });
+            const config = await SubjectConfig.findOne({ classId, subject });
+
+            const expScores = experimentRecords.map(em => {
+                const sm = em.marks.find(m => m.studentId.toString() === studentId.toString());
+                return sm?.score ?? null;
+            }).filter(s => s !== null);
+            const assignScores = assignmentRecords.map(am => {
                 const sm = am.marks.find(m => m.studentId.toString() === studentId.toString());
-                if (sm?.score !== null && sm?.score !== undefined) {
-                    assignmentScores.push(sm.score);
-                    assignmentMax = Math.max(assignmentMax, am.maxScore);
-                }
+                return sm?.score ?? null;
+            }).filter(s => s !== null);
+
+            let labAttScore = 0;
+            if (labAttRecords.length > 0) {
+                const sm = labAttRecords[0].marks.find(m => m.studentId.toString() === studentId.toString());
+                labAttScore = sm?.score ?? 0;
+            }
+            let vivaScore = 0;
+            if (vivaRecords.length > 0) {
+                const sm = vivaRecords[0].marks.find(m => m.studentId.toString() === studentId.toString());
+                vivaScore = sm?.score ?? 0;
             }
 
-            const practicalIA = practicalScoresArr.length > 0
-                ? academicCalc.calcPracticalIA(
-                    practicalScoresArr.reduce((a, b) => a + b, 0) / practicalScoresArr.length,
-                    practicalMaxVal,
-                    settings.practicalWeight
-                ) : 0;
+            const twData = buildTWBreakdown(
+                expScores, config?.experimentMaxScore || 10,
+                assignScores, config?.assignmentMaxScore || 10,
+                labAttScore, vivaScore
+            );
 
             // Get attendance for this subject
             const subjectAtt = attendanceStats.find(a => a.subject === subject);
             const attPercent = subjectAtt ? subjectAtt.percentage : 0;
-            const attendanceIA = academicCalc.calcAttendanceIA(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
+            const attendanceMarks = academicCalc.calcAttendanceMarks(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
 
-            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA, practicalIA);
+            const marks = { ia1, ia2, ese, oralExam, tw: twData.total, twBreakdown: twData };
+            const finalScore = calcFinalScore(marks, attPercent);
 
-            iaStats.push({
+            marksStats.push({
                 subject,
-                utIA,
-                assignmentIA,
-                practicalIA,
-                attendanceIA,
-                totalIA,
-                iaTotal: settings.iaTotal,
+                ...finalScore,
+                attendanceMarks,
                 eligible: subjectAtt ? subjectAtt.eligible : false
             });
         }
@@ -282,7 +253,7 @@ router.get('/stats', async (req, res) => {
             department: classInfo.departmentId?.name || 'N/A',
             attendanceStats,
             testStats,
-            iaStats,
+            marksStats,
             overallAttendance,
             todaysTimetable: formattedTimetable
         });
@@ -488,133 +459,98 @@ router.get('/attendance/:subject', async (req, res) => {
 // IA SUMMARY
 // ============================================
 
-// @route   GET /api/student/ia-summary
-// @desc    Get full IA calculation breakdown per subject
-router.get('/ia-summary', async (req, res) => {
+// @route   GET /api/student/marks-summary
+// @desc    Get full marks calculation breakdown per subject (new system)
+router.get('/marks-summary', async (req, res) => {
     try {
         let studentId = req.studentId;
         let classId = req.studentClassId;
 
         if (req.isParent) {
             const student = await User.findById(studentId);
-            if (!student) {
-                return res.status(404).json({ message: 'Linked student not found' });
-            }
+            if (!student) return res.status(404).json({ message: 'Linked student not found' });
             classId = student.classId;
         }
 
-        if (!classId) {
-            return res.status(400).json({ message: 'Student is not assigned to a class' });
-        }
+        if (!classId) return res.status(400).json({ message: 'Student is not assigned to a class' });
 
         const settings = await AcademicSettings.getSettings();
         const subjects = await Timetable.find({ classId }).distinct('subject');
 
-        const iaSummary = [];
+        const marksSummary = [];
         for (const subject of subjects) {
             // Attendance
             const attendanceRecords = await Attendance.find({ classId, subject });
-            let totalLectures = 0;
-            let attended = 0;
+            let totalLectures = 0, attended = 0;
             for (const record of attendanceRecords) {
-                const studentRecord = record.records.find(
-                    r => r.studentId.toString() === studentId.toString()
-                );
-                if (studentRecord) {
-                    totalLectures++;
-                    if (studentRecord.status === 'present') attended++;
-                }
+                const sr = record.records.find(r => r.studentId.toString() === studentId.toString());
+                if (sr) { totalLectures++; if (sr.status === 'present') attended++; }
             }
             const attPercent = academicCalc.calcAttendancePercent(attended, totalLectures);
+            const attendanceMarks = academicCalc.calcAttendanceMarks(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
 
             // Tests
             const tests = await Test.find({ classId, subject });
-            // Build category map if not already done
-            const testTypeList = await TestType.find({});
-            const catMap = {};
-            for (const tt of testTypeList) {
-                catMap[tt.name] = tt.category || 'ut';
-            }
+            const getTestScore = (testType) => {
+                const test = tests.find(t => t.testType === testType);
+                if (!test) return null;
+                const mark = test.marks.find(m => m.studentId.toString() === studentId.toString());
+                return mark?.score ?? null;
+            };
 
-            const utScores = [];
-            let utMaxMarks = 20;
-            const assignmentScores = [];
-            let assignmentMax = 0;
+            const ia1 = getTestScore('IA1');
+            const ia2 = getTestScore('IA2');
+            const ese = getTestScore('ESE');
+            const oralExam = getTestScore('Oral Exam');
 
-            for (const test of tests) {
-                const studentMark = test.marks.find(
-                    m => m.studentId.toString() === studentId.toString()
-                );
-                const score = studentMark?.score;
-                const cat = catMap[test.testType] || 'ut';
-
-                if (cat === 'ut') {
-                    if (score !== null && score !== undefined) utScores.push(score);
-                    utMaxMarks = test.maxScore;
-                } else if (cat === 'assignment') {
-                    if (score !== null && score !== undefined) assignmentScores.push(score);
-                    assignmentMax = Math.max(assignmentMax, test.maxScore);
-                }
-            }
-
-            const utIA = academicCalc.calcUTIA(utScores, utMaxMarks, settings.utWeight);
-            const assignmentIA = assignmentScores.length > 0
-                ? academicCalc.calcAssignmentIA(
-                    assignmentScores.reduce((a, b) => a + b, 0) / assignmentScores.length,
-                    assignmentMax,
-                    settings.assignmentWeight
-                ) : 0;
-
-            // Get experiment marks from AssignmentMark model
+            // TW data
             const experimentRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
-            const practicalScoresArr = [];
-            let practicalMaxVal = 0;
-            for (const em of experimentRecords) {
-                const sm = em.marks.find(m => m.studentId.toString() === studentId.toString());
-                if (sm?.score !== null && sm?.score !== undefined) {
-                    practicalScoresArr.push(sm.score);
-                    practicalMaxVal = Math.max(practicalMaxVal, em.maxScore);
-                }
-            }
-
-            // Get assignment marks from AssignmentMark model
             const assignmentRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
-            for (const am of assignmentRecords) {
+            const labAttRecords = await AssignmentMark.find({ classId, subject, type: 'lab_attendance' });
+            const vivaRecords = await AssignmentMark.find({ classId, subject, type: 'internal_viva' });
+            const config = await SubjectConfig.findOne({ classId, subject });
+
+            const expScores = experimentRecords.map(em => {
+                const sm = em.marks.find(m => m.studentId.toString() === studentId.toString());
+                return sm?.score ?? null;
+            }).filter(s => s !== null);
+            const assignScores = assignmentRecords.map(am => {
                 const sm = am.marks.find(m => m.studentId.toString() === studentId.toString());
-                if (sm?.score !== null && sm?.score !== undefined) {
-                    assignmentScores.push(sm.score);
-                    assignmentMax = Math.max(assignmentMax, am.maxScore);
-                }
+                return sm?.score ?? null;
+            }).filter(s => s !== null);
+
+            let labAttScore = 0;
+            if (labAttRecords.length > 0) {
+                const sm = labAttRecords[0].marks.find(m => m.studentId.toString() === studentId.toString());
+                labAttScore = sm?.score ?? 0;
+            }
+            let vivaScore = 0;
+            if (vivaRecords.length > 0) {
+                const sm = vivaRecords[0].marks.find(m => m.studentId.toString() === studentId.toString());
+                vivaScore = sm?.score ?? 0;
             }
 
-            const practicalIA = practicalScoresArr.length > 0
-                ? academicCalc.calcPracticalIA(
-                    practicalScoresArr.reduce((a, b) => a + b, 0) / practicalScoresArr.length,
-                    practicalMaxVal,
-                    settings.practicalWeight
-                ) : 0;
+            const twData = buildTWBreakdown(
+                expScores, config?.experimentMaxScore || 10,
+                assignScores, config?.assignmentMaxScore || 10,
+                labAttScore, vivaScore
+            );
 
-            const attendanceIA = academicCalc.calcAttendanceIA(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
-            const totalIA = academicCalc.calcTotalIA(utIA, assignmentIA, attendanceIA, practicalIA);
+            const marks = { ia1, ia2, ese, oralExam, tw: twData.total, twBreakdown: twData };
+            const finalScore = calcFinalScore(marks, attPercent);
 
-            iaSummary.push({
+            marksSummary.push({
                 subject,
-                utIA,
-                utScores,
-                assignmentIA,
-                practicalIA,
-                attendanceIA,
-                totalIA,
-                iaTotal: settings.iaTotal,
-                attendancePercent: attPercent,
+                ...finalScore,
+                attendanceMarks,
                 eligible: academicCalc.isEligible(attPercent, settings.minAttendancePercent),
                 classesNeeded: academicCalc.requiredClasses(totalLectures, attended, settings.minAttendancePercent)
             });
         }
 
-        res.json({ iaSummary, settings: { iaTotal: settings.iaTotal, eseTotal: settings.eseTotal } });
+        res.json({ marksSummary, testTypes: FIXED_TEST_TYPES });
     } catch (error) {
-        console.error('Student IA summary error:', error);
+        console.error('Student marks summary error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });

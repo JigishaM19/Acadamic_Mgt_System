@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { FiBarChart2, FiTarget, FiSave, FiRefreshCw, FiX, FiInfo } from 'react-icons/fi';
-import { FaBalanceScale, FaRuler, FaExclamationTriangle } from 'react-icons/fa';
+import { FiTarget, FiSave, FiRefreshCw, FiX, FiInfo } from 'react-icons/fi';
+import { FaRuler } from 'react-icons/fa';
 
 const AcademicSettings = () => {
     const [settings, setSettings] = useState(null);
@@ -139,7 +139,6 @@ const AcademicSettings = () => {
         );
     }
 
-    const iaSum = (formData.utWeight || 0) + (formData.assignmentWeight || 0) + (formData.attendanceWeight || 0);
 
     return (
         <div style={styles.container}>
@@ -175,104 +174,6 @@ const AcademicSettings = () => {
                     </div>
                 </div>
 
-                {/* Mark Distribution */}
-                <div style={styles.card}>
-                    <h3 style={styles.cardTitle}><FiBarChart2 style={{ marginRight: '6px' }} /> Mark Distribution</h3>
-                    <p style={styles.cardDesc}>Configure total marks split between Internal Assessment and End Semester Exam.</p>
-                    <div style={styles.fieldGrid}>
-                        <div style={styles.fieldGroup}>
-                            <label style={styles.label}>IA Total Marks</label>
-                            <input
-                                type="number"
-                                name="iaTotal"
-                                value={formData.iaTotal}
-                                onChange={handleChange}
-                                style={styles.input}
-                                min="0"
-                            />
-                        </div>
-                        <div style={styles.fieldGroup}>
-                            <label style={styles.label}>ESE Total Marks</label>
-                            <input
-                                type="number"
-                                name="eseTotal"
-                                value={formData.eseTotal}
-                                onChange={handleChange}
-                                style={styles.input}
-                                min="0"
-                            />
-                        </div>
-                        <div style={styles.fieldGroup}>
-                            <label style={styles.label}>Total</label>
-                            <div style={styles.totalDisplay}>
-                                {formData.iaTotal + formData.eseTotal}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* IA Component Weights */}
-                <div style={styles.card}>
-                    <h3 style={styles.cardTitle}><FaBalanceScale style={{ marginRight: '6px' }} /> IA Component Weights</h3>
-                    <p style={styles.cardDesc}>
-                        Set weights for each IA component. Sum should equal IA Total ({formData.iaTotal}).
-                        {iaSum !== formData.iaTotal && (
-                            <span style={{ color: '#dc3545', fontWeight: 'bold', marginLeft: 8 }}>
-                                <FaExclamationTriangle style={{ marginRight: '4px' }} /> Current sum: {iaSum} (expected: {formData.iaTotal})
-                            </span>
-                        )}
-                    </p>
-                    <div style={styles.fieldGrid}>
-                        <div style={styles.fieldGroup}>
-                            <label style={styles.label}>Unit Test Weight</label>
-                            <input
-                                type="number"
-                                name="utWeight"
-                                value={formData.utWeight}
-                                onChange={handleChange}
-                                style={styles.input}
-                                min="0"
-                            />
-                            <span style={styles.hint}>Formula: avg(UTs) / maxMarks × weight</span>
-                        </div>
-                        <div style={styles.fieldGroup}>
-                            <label style={styles.label}>Assignment Weight</label>
-                            <input
-                                type="number"
-                                name="assignmentWeight"
-                                value={formData.assignmentWeight}
-                                onChange={handleChange}
-                                style={styles.input}
-                                min="0"
-                            />
-                            <span style={styles.hint}>Formula: marks / maxMarks × weight</span>
-                        </div>
-                        <div style={styles.fieldGroup}>
-                            <label style={styles.label}>Attendance Weight</label>
-                            <input
-                                type="number"
-                                name="attendanceWeight"
-                                value={formData.attendanceWeight}
-                                onChange={handleChange}
-                                style={styles.input}
-                                min="0"
-                            />
-                            <span style={styles.hint}>Uses slab multiplier × weight</span>
-                        </div>
-                        <div style={styles.fieldGroup}>
-                            <label style={styles.label}>Practical/Oral Weight</label>
-                            <input
-                                type="number"
-                                name="practicalWeight"
-                                value={formData.practicalWeight}
-                                onChange={handleChange}
-                                style={styles.input}
-                                min="0"
-                            />
-                            <span style={styles.hint}>For practical/term work subjects</span>
-                        </div>
-                    </div>
-                </div>
 
                 {/* Minimum Percentages */}
                 <div style={styles.card}>
@@ -391,23 +292,27 @@ const AcademicSettings = () => {
 
             {/* Info Card */}
             <div style={styles.infoCard}>
-                <h4 style={{ margin: '0 0 12px 0' }}><FiInfo style={{ marginRight: '6px' }} /> How IA is Calculated</h4>
+                <h4 style={{ margin: '0 0 12px 0' }}><FiInfo style={{ marginRight: '6px' }} /> New Marks System (Mumbai University CBSGS)</h4>
                 <div style={styles.formulaGrid}>
                     <div style={styles.formulaItem}>
-                        <strong>UT IA</strong>
-                        <code style={styles.code}>avg(UT scores) / maxMarks × utWeight</code>
+                        <strong>Final IA</strong>
+                        <code style={styles.code}>(IA1 + IA2) / 2 → out of 20</code>
                     </div>
                     <div style={styles.formulaItem}>
-                        <strong>Assignment IA</strong>
-                        <code style={styles.code}>marks / maxMarks × assignmentWeight</code>
+                        <strong>Term Work (Auto)</strong>
+                        <code style={styles.code}>Journal(10) + Assignments(5) + Lab(5) + Viva(5) = 25</code>
                     </div>
                     <div style={styles.formulaItem}>
-                        <strong>Attendance IA</strong>
-                        <code style={styles.code}>slabMultiplier × attendanceWeight</code>
+                        <strong>Attendance Marks</strong>
+                        <code style={styles.code}>slabMultiplier × attendanceWeight (displayed only)</code>
                     </div>
                     <div style={styles.formulaItem}>
-                        <strong>Total IA</strong>
-                        <code style={styles.code}>UT IA + Assignment IA + Attendance IA</code>
+                        <strong>Total</strong>
+                        <code style={styles.code}>Final IA + TW + Oral(25) + ESE(80) = 150</code>
+                    </div>
+                    <div style={styles.formulaItem}>
+                        <strong>Passing</strong>
+                        <code style={styles.code}>ESE ≥ 32, TW ≥ 10, Total ≥ 60</code>
                     </div>
                 </div>
             </div>

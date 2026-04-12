@@ -121,6 +121,32 @@ router.put('/', auth, async (req, res) => {
     }
 });
 
+// Verify current password (step 1 of 2-step change password flow)
+router.post('/verify-password', auth, async (req, res) => {
+    try {
+        const { currentPassword } = req.body;
+
+        if (!currentPassword) {
+            return res.status(400).json({ message: 'Current password is required' });
+        }
+
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Current password is incorrect' });
+        }
+
+        res.json({ verified: true, message: 'Password verified successfully' });
+    } catch (error) {
+        console.error('Password verify error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Change password
 router.put('/change-password', auth, async (req, res) => {
     try {

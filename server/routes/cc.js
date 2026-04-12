@@ -7,7 +7,7 @@ const Class = require('../models/Class');
 const Timetable = require('../models/Timetable');
 const Attendance = require('../models/Attendance');
 const Test = require('../models/Test');
-const TestType = require('../models/TestType');
+const { FIXED_TEST_TYPES } = require('../utils/markCalculationService');
 const TimeSlot = require('../models/TimeSlot');
 const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
@@ -187,36 +187,13 @@ router.get('/stats', async (req, res) => {
                 const attPercent = academicCalc.calcAttendancePercent(attended, total);
 
                 if (attPercent < settings.minAttendancePercent && total > 0) {
-                    // Calculate IA for this student-subject
-                    const subjTests = allTests.filter(t => t.subject === subj);
-                    const utScores = [], assignScores = [];
-                    let utMax = 20, assignMax = 0;
-                    for (const test of subjTests) {
-                        const sm = test.marks.find(m => m.studentId.toString() === sid);
-                        const score = sm?.score;
-                        const tl = (test.testType || '').toLowerCase();
-                        if (tl.includes('ut') || tl.includes('unit test')) {
-                            if (score != null) utScores.push(score);
-                            utMax = test.maxScore;
-                        } else if (tl.includes('assignment')) {
-                            if (score != null) assignScores.push(score);
-                            assignMax = Math.max(assignMax, test.maxScore);
-                        }
-                    }
-                    const utIA = academicCalc.calcUTIA(utScores, utMax, settings.utWeight);
-                    const assignIA = assignScores.length > 0
-                        ? academicCalc.calcAssignmentIA(assignScores.reduce((a, b) => a + b, 0) / assignScores.length, assignMax, settings.assignmentWeight) : 0;
-                    const attIA = academicCalc.calcAttendanceIA(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
-                    const totalIA = academicCalc.calcTotalIA(utIA, assignIA, attIA);
-
                     atRiskStudents.push({
                         studentId: student._id,
                         fullName: student.fullName,
                         username: student.username,
                         subject: subj,
                         attendancePercent: attPercent,
-                        totalIA,
-                        iaTotal: settings.iaTotal,
+                        attendanceMarks: academicCalc.calcAttendanceMarks(attPercent, settings.attendanceWeight, settings.attendanceSlabs),
                         classesNeeded: academicCalc.requiredClasses(total, attended, settings.minAttendancePercent),
                         status: attPercent < 60 ? 'critical' : 'warning'
                     });
@@ -714,10 +691,7 @@ router.get('/tests/:subject', async (req, res) => {
             subject
         }).sort({ date: -1 });
 
-        // Get test types
-        const testTypes = await TestType.find();
-
-        res.json({ students, tests, testTypes });
+        res.json({ students, tests, testTypes: FIXED_TEST_TYPES });
     } catch (error) {
         console.error('CC tests detail error:', error);
         res.status(500).json({ message: 'Server error' });

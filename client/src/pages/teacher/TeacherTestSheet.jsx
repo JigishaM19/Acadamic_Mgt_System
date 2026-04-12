@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { FiEdit2, FiTrash2, FiCheckCircle, FiXCircle } from 'react-icons/fi';
-import { FaChartBar } from 'react-icons/fa';
+import { FiArrowLeft, FiSave, FiEye, FiX, FiAward, FiAlertTriangle, FiCheckCircle, FiClock, FiDownload, FiUpload, FiFile } from 'react-icons/fi';
 
 const TeacherTestSheet = () => {
     const { classId, subject } = useParams();
-    const navigate = useNavigate();
     const decodedSubject = decodeURIComponent(subject);
+    const navigate = useNavigate();
+    const fileInputRef = useRef(null);
 
     const [classInfo, setClassInfo] = useState(null);
     const [students, setStudents] = useState([]);
@@ -15,595 +16,477 @@ const TeacherTestSheet = () => {
     const [testTypes, setTestTypes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [message, setMessage] = useState({ type: '', text: '' });
+    const [message, setMessage] = useState('');
+    const [showSummary, setShowSummary] = useState(false);
+    const [marksSummary, setMarksSummary] = useState([]);
+    const [summaryLoading, setSummaryLoading] = useState(false);
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [selectedFile, setSelectedFile] = useState(null);
 
-    // New test form state
-    const [showNewForm, setShowNewForm] = useState(false);
-    const [newTest, setNewTest] = useState({
-        testType: '',
-        date: new Date().toISOString().split('T')[0],
-        maxScore: 20,
-        marks: []
-    });
-
-    // Edit mode state
-    const [editingTest, setEditingTest] = useState(null);
-    const [editedMarks, setEditedMarks] = useState([]);
-
-    // IA Preview state
-    const [iaPreview, setIaPreview] = useState(null);
-    const [iaLoading, setIaLoading] = useState(false);
-    const [showIaPreview, setShowIaPreview] = useState(false);
-
-    useEffect(() => {
-        fetchData();
-    }, [classId, subject]);
+    useEffect(() => { fetchData(); }, [classId, subject]);
 
     const fetchData = async () => {
         try {
-            const [sheetResponse, testTypesResponse] = await Promise.all([
+            const [testsRes, typesRes] = await Promise.all([
                 api.get(`/teacher/tests/${classId}/${encodeURIComponent(decodedSubject)}`),
                 api.get('/teacher/test-types')
             ]);
-
-            setClassInfo(sheetResponse.data.classInfo);
-            setStudents(sheetResponse.data.students);
-            setTests(sheetResponse.data.tests || []);
-            setTestTypes(testTypesResponse.data);
-
-            // Initialize new test marks with null scores
-            const initialMarks = sheetResponse.data.students.map(s => ({
-                studentId: s._id,
-                score: null
-            }));
-            setNewTest(prev => ({ ...prev, marks: initialMarks }));
-
-            // Set default test type
-            if (testTypesResponse.data.length > 0) {
-                setNewTest(prev => ({ ...prev, testType: testTypesResponse.data[0].name }));
-            }
-        } catch (error) {
-            console.error('Failed to fetch test sheet:', error);
-            setMessage({ type: 'error', text: 'Failed to load test data' });
+            setClassInfo(testsRes.data.classInfo);
+            setStudents(testsRes.data.students);
+            setTests(testsRes.data.tests);
+            setTestTypes(typesRes.data);
+        } catch (err) {
+            console.error('Failed to fetch test data:', err);
         } finally {
             setLoading(false);
         }
     };
 
-    const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('en-IN', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric'
+    // Get score for a student from a specific test type
+    const getScore = (testType, studentId) => {
+        const test = tests.find(t => t.testType === testType);
+        if (!test) return '';
+        const mark = test.marks?.find(m => m.studentId === studentId || m.studentId?.toString() === studentId);
+        return mark?.score ?? '';
+    };
+
+    // Save marks for a single test type
+    const saveTestType = async (testType) => {
+        const typeInfo = testTypes.find(t => t.name === testType);
+        if (!typeInfo) return;
+
+        const marks = students.map(s => {
+            const inputEl = document.getElementById(`test-${testType}-${s._id}`);
+            const val = inputEl?.value;
+            return {
+                studentId: s._id,
+                score: (val === '' || val === undefined) ? null : parseFloat(val)
+            };
         });
-    };
 
-    const getStudentScore = (test, studentId) => {
-        const mark = test.marks?.find(m => m.studentId === studentId || m.studentId?._id === studentId);
-        return mark?.score;
-    };
-
-    // New Test Form Handlers
-    const handleNewMarkChange = (studentId, value) => {
-        const numValue = value === '' ? null : parseFloat(value);
-        setNewTest(prev => ({
-            ...prev,
-            marks: prev.marks.map(m =>
-                m.studentId === studentId ? { ...m, score: numValue } : m
-            )
-        }));
-    };
-
-    const handleSaveNew = async () => {
-        if (!newTest.testType) {
-            setMessage({ type: 'error', text: 'Please select a test type' });
-            return;
-        }
-
-        if (!newTest.maxScore || newTest.maxScore <= 0) {
-            setMessage({ type: 'error', text: 'Please enter a valid max score' });
-            return;
-        }
-
-        // Validate marks
-        for (const mark of newTest.marks) {
-            if (mark.score !== null && (mark.score < 0 || mark.score > newTest.maxScore)) {
-                setMessage({ type: 'error', text: `Score must be between 0 and ${newTest.maxScore}` });
+        // Validate
+        for (const m of marks) {
+            if (m.score !== null && (m.score < 0 || m.score > typeInfo.maxScore)) {
+                setMessage(`Score must be between 0 and ${typeInfo.maxScore} for ${testType}`);
+                setTimeout(() => setMessage(''), 3000);
                 return;
             }
         }
 
-        setSaving(true);
-        setMessage({ type: '', text: '' });
-
         try {
+            setSaving(true);
             await api.post('/teacher/tests', {
                 classId,
                 subject: decodedSubject,
-                testType: newTest.testType,
-                date: newTest.date,
-                maxScore: newTest.maxScore,
-                marks: newTest.marks
+                testType,
+                marks
             });
-
-            setMessage({ type: 'success', text: 'Test saved successfully!' });
-            setShowNewForm(false);
+            setMessage(`${testType} marks saved!`);
             fetchData();
-        } catch (error) {
-            console.error('Failed to save test:', error);
-            setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to save test' });
+            setTimeout(() => setMessage(''), 3000);
+        } catch (err) {
+            setMessage(err.response?.data?.message || 'Failed to save');
         } finally {
             setSaving(false);
         }
     };
 
-    // Edit Handlers
-    const handleEditClick = (test) => {
-        setEditingTest(test);
-        setEditedMarks(students.map(student => {
-            const existingMark = test.marks?.find(m => m.studentId === student._id || m.studentId?._id === student._id);
-            return {
-                studentId: student._id,
-                score: existingMark?.score ?? ''
-            };
-        }));
-    };
-
-    const handleScoreChange = (studentId, value) => {
-        const numValue = value === '' ? '' : parseFloat(value);
-        setEditedMarks(prev => prev.map(m => {
-            if (m.studentId === studentId) {
-                return { ...m, score: numValue };
-            }
-            return m;
-        }));
-    };
-
-    const handleSaveEdit = async () => {
-        if (!editingTest) return;
-
-        // Validate scores
-        for (const mark of editedMarks) {
-            if (mark.score !== '' && mark.score !== null) {
-                if (mark.score < 0 || mark.score > editingTest.maxScore) {
-                    setMessage({ type: 'error', text: `Score must be between 0 and ${editingTest.maxScore}` });
-                    return;
-                }
-            }
-        }
-
-        setSaving(true);
-        setMessage({ type: '', text: '' });
-
+    // Load marks summary (View Final Score)
+    const loadSummary = async () => {
         try {
-            await api.put(`/teacher/tests/${editingTest._id}`, {
-                marks: editedMarks.map(m => ({
-                    studentId: m.studentId,
-                    score: m.score === '' ? null : m.score
-                }))
+            setSummaryLoading(true);
+            setShowSummary(true);
+            const res = await api.get(`/teacher/tests/${classId}/${encodeURIComponent(decodedSubject)}/marks-summary`);
+            setMarksSummary(res.data.marksSummary);
+        } catch (err) {
+            console.error('Failed to load marks summary:', err);
+            setMessage('Failed to load summary');
+        } finally {
+            setSummaryLoading(false);
+        }
+    };
+
+    // Export test marks
+    const handleExport = async () => {
+        try {
+            const res = await api.get(
+                `/teacher/tests/${classId}/${encodeURIComponent(decodedSubject)}/export`,
+                { responseType: 'blob' }
+            );
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${decodedSubject}_Test_Marks.xlsx`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setMessage('Export failed');
+            setTimeout(() => setMessage(''), 3000);
+        }
+    };
+
+    // Download template
+    const handleDownloadTemplate = async () => {
+        try {
+            const res = await api.get(
+                `/teacher/tests/${classId}/${encodeURIComponent(decodedSubject)}/template`,
+                { responseType: 'blob' }
+            );
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${decodedSubject}_Test_Marks_Template.xlsx`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setMessage('Template download failed');
+            setTimeout(() => setMessage(''), 3000);
+        }
+    };
+
+    // Upload test marks
+    const handleUpload = async () => {
+        if (!selectedFile) return;
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('classId', classId);
+        formData.append('subject', decodedSubject);
+        try {
+            setSaving(true);
+            const res = await api.post('/teacher/tests/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
-            setMessage({ type: 'success', text: 'Test scores updated successfully!' });
-            await fetchData();
-            setEditingTest(null);
-            setEditedMarks([]);
-        } catch (error) {
-            console.error('Failed to save test scores:', error);
-            setMessage({ type: 'error', text: 'Failed to save test scores' });
-        } finally {
+            if (res.data.errors?.length > 0) {
+                console.warn('Upload errors:', res.data.errors);
+            }
+            // Reload page to refresh uncontrolled inputs
+            window.location.reload();
+        } catch (err) {
+            setMessage('Upload failed');
             setSaving(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            setTimeout(() => setMessage(''), 4000);
         }
     };
 
-    const handleCancelEdit = () => {
-        setEditingTest(null);
-        setEditedMarks([]);
-    };
-
-    const handleDelete = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this test record?')) return;
-
-        try {
-            await api.delete(`/teacher/tests/${id}`);
-            setMessage({ type: 'success', text: 'Test deleted successfully!' });
-            fetchData();
-        } catch (error) {
-            console.error('Failed to delete test:', error);
-            setMessage({ type: 'error', text: 'Failed to delete test' });
-        }
-    };
-
-    const fetchIaPreview = async () => {
-        if (iaPreview) {
-            setShowIaPreview(!showIaPreview);
-            return;
-        }
-        setIaLoading(true);
-        try {
-            const response = await api.get(`/teacher/tests/${classId}/${encodeURIComponent(decodedSubject)}/ia-preview`);
-            setIaPreview(response.data);
-            setShowIaPreview(true);
-        } catch (error) {
-            console.error('Failed to fetch IA preview:', error);
-            setMessage({ type: 'error', text: 'Failed to load IA preview' });
-        } finally {
-            setIaLoading(false);
-        }
-    };
-
-    if (loading) {
+    const getStatusBadge = (status) => {
+        const config = {
+            PASS: { bg: 'rgba(16,185,129,0.1)', color: '#10b981', icon: <FiCheckCircle size={12} /> },
+            FAIL: { bg: 'rgba(239,68,68,0.1)', color: '#ef4444', icon: <FiAlertTriangle size={12} /> },
+            DETAINED: { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', icon: <FiAlertTriangle size={12} /> },
+            INCOMPLETE: { bg: 'rgba(107,114,128,0.1)', color: '#6b7280', icon: <FiClock size={12} /> }
+        };
+        const s = config[status] || config.INCOMPLETE;
         return (
-            <div className="loading">
-                <div className="spinner"></div>
-            </div>
+            <span style={{
+                padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600,
+                background: s.bg, color: s.color, display: 'inline-flex', alignItems: 'center', gap: '4px'
+            }}>
+                {s.icon} {status}
+            </span>
         );
-    }
+    };
+
+    if (loading) return <div className="loading"><div className="spinner"></div></div>;
+
+    // Only show editable test types in the table
+    const editableTypes = testTypes.filter(t => t.editable);
 
     return (
-        <div>
-            <div className="card">
-                <div className="card-header">
-                    <div
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            width: '100%',
-                            gap: '12px',
-                        }}
-                    >
-                        {/* LEFT SIDE */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <button
-                                className="btn btn-outline"
-                                onClick={() => navigate('/teacher/tests')}
-                            >
-                                ← Back
-                            </button>
-
-                            <div>
-                                <h2 className="card-title" style={{ margin: 0 }}>
-                                    {classInfo?.className} - {decodedSubject} - Test Scores
-                                </h2>
-                                <p
-                                    style={{
-                                        margin: '4px 0 0',
-                                        color: 'var(--text-secondary)',
-                                        fontSize: '14px',
-                                    }}
-                                >
-                                    {classInfo?.department} • Year {classInfo?.year}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* RIGHT SIDE */}
-                        <button
-                            className="btn btn-primary"
-                            onClick={() => setShowNewForm(true)}
-                            disabled={showNewForm}
-                        >
-                            Create New Test
-                        </button>
+        <div className="page-container">
+            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => navigate('/teacher/tests')}>
+                        <FiArrowLeft />
+                    </button>
+                    <div>
+                        <h2 style={{ margin: 0 }}>{decodedSubject}</h2>
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                            {classInfo?.className} • Year {classInfo?.year} • {classInfo?.department}
+                        </span>
                     </div>
                 </div>
-
-
-                {/* Messages */}
-                {message.text && (
-                    <div className={`alert alert-${message.type}`} style={{ margin: '0 16px 16px' }}>
-                        {message.text}
-                    </div>
-                )}
-
-                {/* New Test Form */}
-                {showNewForm && (
-                    <div className="form-section" style={{ margin: '0 16px 20px', padding: '16px', background: 'var(--success-light)', borderRadius: '8px' }}>
-                        <h3 style={{ marginBottom: '12px' }}>Create New Test</h3>
-                        <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                            <div className="form-group" style={{ minWidth: '150px' }}>
-                                <label className="form-label">Test Type</label>
-                                <select
-                                    className="form-input"
-                                    value={newTest.testType}
-                                    onChange={(e) => setNewTest(prev => ({ ...prev, testType: e.target.value }))}
-                                >
-                                    <option value="">Select Test Type</option>
-                                    {testTypes.map(type => (
-                                        <option key={type._id} value={type.name}>
-                                            {type.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="form-group" style={{ minWidth: '150px' }}>
-                                <label className="form-label">Date</label>
-                                <input
-                                    type="date"
-                                    className="form-input"
-                                    value={newTest.date}
-                                    onChange={(e) => setNewTest(prev => ({ ...prev, date: e.target.value }))}
-                                />
-                            </div>
-                            <div className="form-group" style={{ minWidth: '100px' }}>
-                                <label className="form-label">Max Score</label>
-                                <input
-                                    type="number"
-                                    className="form-input"
-                                    value={newTest.maxScore}
-                                    onChange={(e) => setNewTest(prev => ({ ...prev, maxScore: parseInt(e.target.value) || 0 }))}
-                                    min="1"
-                                />
-                            </div>
-                        </div>
-                        <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Roll No</th>
-                                        <th>Student Name</th>
-                                        <th>Score (out of {newTest.maxScore})</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {students.map(student => {
-                                        const mark = newTest.marks.find(m => m.studentId === student._id);
-                                        return (
-                                            <tr key={student._id}>
-                                                <td>{student.username}</td>
-                                                <td>{student.fullName || `${student.firstName} ${student.lastName}`}</td>
-                                                <td>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        max={newTest.maxScore}
-                                                        value={mark?.score ?? ''}
-                                                        onChange={(e) => handleNewMarkChange(student._id, e.target.value)}
-                                                        style={{ width: '80px', padding: '6px', borderRadius: '4px', border: '1px solid var(--border)' }}
-                                                        placeholder="—"
-                                                    />
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div style={{ marginTop: '16px', display: 'flex', gap: '12px' }}>
-                            <button className="btn btn-primary" onClick={handleSaveNew} disabled={saving}>
-                                {saving ? 'Saving...' : 'Save Test'}
-                            </button>
-                            <button className="btn btn-outline" onClick={() => setShowNewForm(false)}>
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Edit Test Form */}
-                {editingTest && (
-                    <div className="form-section" style={{ margin: '0 16px 20px', padding: '16px', background: 'var(--primary-light)', borderRadius: '8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <h3 style={{ margin: 0 }}>
-                                <FiEdit2 style={{ marginRight: '4px' }} /> Editing: {editingTest.testType} • {formatDate(editingTest.date)} (Max: {editingTest.maxScore})
-                            </h3>
-                            <button
-                                className="btn btn-danger"
-                                onClick={() => {
-                                    handleDelete(editingTest._id);
-                                    handleCancelEdit();
-                                }}
-                                style={{ fontSize: '12px', padding: '6px 12px' }}
-                            >
-                                <FiTrash2 style={{ marginRight: '4px' }} /> Delete Test
-                            </button>
-                        </div>
-                        <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Roll No</th>
-                                        <th>Student Name</th>
-                                        <th>Score (out of {editingTest.maxScore})</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {students.map(student => {
-                                        const mark = editedMarks.find(m => m.studentId === student._id);
-                                        return (
-                                            <tr key={student._id}>
-                                                <td>{student.username}</td>
-                                                <td>{student.fullName || `${student.firstName} ${student.lastName}`}</td>
-                                                <td>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        max={editingTest.maxScore}
-                                                        value={mark?.score ?? ''}
-                                                        onChange={(e) => handleScoreChange(student._id, e.target.value)}
-                                                        style={{ width: '80px', padding: '6px', borderRadius: '4px', border: '1px solid var(--border)' }}
-                                                        placeholder="—"
-                                                    />
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div style={{ marginTop: '16px', display: 'flex', gap: '12px' }}>
-                            <button className="btn btn-primary" onClick={handleSaveEdit} disabled={saving}>
-                                {saving ? 'Saving...' : 'Save Changes'}
-                            </button>
-                            <button className="btn btn-outline" onClick={handleCancelEdit}>
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Spreadsheet-style Test Scores Table */}
-                <div className="table-container" style={{ overflowX: 'auto' }}>
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 2, minWidth: '80px' }}>Roll No</th>
-                                <th style={{ position: 'sticky', left: '80px', background: 'var(--bg)', zIndex: 2, minWidth: '150px' }}>Name</th>
-                                {tests.map(test => (
-                                    <th key={test._id} style={{ minWidth: '120px', textAlign: 'center' }}>
-                                        <div>{test.testType}</div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                            {formatDate(test.date)}
-                                        </div>
-                                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                                            Max: {test.maxScore}
-                                        </div>
-                                        <button
-                                            className="btn-icon"
-                                            onClick={() => handleEditClick(test)}
-                                            title="Edit"
-                                            style={{ marginTop: '4px' }}
-                                        >
-                                            <FiEdit2 />
-                                        </button>
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {students.map(student => (
-                                <tr key={student._id}>
-                                    <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1 }}>
-                                        {student.username}
-                                    </td>
-                                    <td style={{ position: 'sticky', left: '80px', background: 'var(--bg)', zIndex: 1 }}>
-                                        {student.fullName || `${student.firstName} ${student.lastName}`}
-                                    </td>
-                                    {tests.map(test => {
-                                        const score = getStudentScore(test, student._id);
-                                        const percentage = score !== undefined && score !== null
-                                            ? Math.round((score / test.maxScore) * 100)
-                                            : null;
-
-                                        return (
-                                            <td key={test._id} style={{ textAlign: 'center' }}>
-                                                {score !== undefined && score !== null ? (
-                                                    <span style={{
-                                                        padding: '4px 12px',
-                                                        borderRadius: '12px',
-                                                        fontSize: '12px',
-                                                        fontWeight: '500',
-                                                        background: percentage >= 70 ? 'rgba(16, 185, 129, 0.1)' :
-                                                            percentage >= 50 ? 'rgba(245, 158, 11, 0.1)' :
-                                                                'rgba(239, 68, 68, 0.1)',
-                                                        color: percentage >= 70 ? 'var(--success)' :
-                                                            percentage >= 50 ? 'var(--warning)' :
-                                                                'var(--danger)'
-                                                    }}>
-                                                        {score}/{test.maxScore}
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                                                )}
-                                            </td>
-                                        );
-                                    })}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {tests.length === 0 && (
-                    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        No test records found for {decodedSubject}. Click "+ Create New Test" to get started.
-                    </div>
-                )}
-            </div>
-
-            {/* IA Preview Section */}
-            <div className="card" style={{ marginTop: '20px' }}>
-                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 className="card-title" style={{ margin: 0 }}><FaChartBar style={{ marginRight: '6px' }} /> IA Score Preview</h3>
-                    <button
-                        className={`btn ${showIaPreview ? 'btn-outline' : 'btn-primary'}`}
-                        onClick={fetchIaPreview}
-                        disabled={iaLoading}
-                    >
-                        {iaLoading ? 'Loading...' : showIaPreview ? 'Hide Preview' : 'View IA Preview'}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button className="btn btn-outline btn-sm" onClick={handleExport}>
+                        <FiDownload style={{ marginRight: '4px' }} /> Export
+                    </button>
+                    <button className="btn btn-outline btn-sm" onClick={() => { setSelectedFile(null); setShowUploadModal(true); }}>
+                        <FiUpload style={{ marginRight: '4px' }} /> Upload
+                    </button>
+                    <button className="btn btn-primary btn-sm" onClick={loadSummary}>
+                        <FiEye style={{ marginRight: '4px' }} /> View Final Score
                     </button>
                 </div>
-
-                {showIaPreview && iaPreview && (
-                    <div className="table-container" style={{ overflowX: 'auto' }}>
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Roll No</th>
-                                    <th>Name</th>
-                                     <th style={{ textAlign: 'center' }}>UT IA</th>
-                                    <th style={{ textAlign: 'center' }}>Assignment IA</th>
-                                    <th style={{ textAlign: 'center' }}>Practical IA</th>
-                                    <th style={{ textAlign: 'center' }}>Attendance IA</th>
-                                    <th style={{ textAlign: 'center' }}>Total IA / {iaPreview.settings?.iaTotal || 20}</th>
-                                    <th style={{ textAlign: 'center' }}>Attendance %</th>
-                                    <th style={{ textAlign: 'center' }}>Eligible</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {iaPreview.iaPreview?.map(row => (
-                                    <tr key={row.studentId}>
-                                        <td>{row.username || '—'}</td>
-                                        <td>{row.fullName}</td>
-                                        <td style={{ textAlign: 'center' }}>{row.utIA?.toFixed(1) ?? '—'}</td>
-                                        <td style={{ textAlign: 'center' }}>{row.assignmentIA?.toFixed(1) ?? '—'}</td>
-                                        <td style={{ textAlign: 'center' }}>{row.practicalIA?.toFixed(1) ?? '0.0'}</td>
-                                        <td style={{ textAlign: 'center' }}>{row.attendanceIA?.toFixed(1) ?? '—'}</td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <span style={{
-                                                padding: '4px 12px',
-                                                borderRadius: '12px',
-                                                fontWeight: '600',
-                                                fontSize: '13px',
-                                                background: (row.totalIA / (iaPreview.settings?.iaTotal || 20)) >= 0.6
-                                                    ? 'rgba(16,185,129,0.1)'
-                                                    : (row.totalIA / (iaPreview.settings?.iaTotal || 20)) >= 0.4
-                                                        ? 'rgba(245,158,11,0.1)'
-                                                        : 'rgba(239,68,68,0.1)',
-                                                color: (row.totalIA / (iaPreview.settings?.iaTotal || 20)) >= 0.6
-                                                    ? 'var(--success)'
-                                                    : (row.totalIA / (iaPreview.settings?.iaTotal || 20)) >= 0.4
-                                                        ? 'var(--warning)'
-                                                        : 'var(--danger)'
-                                            }}>
-                                                {row.totalIA?.toFixed(1)}
-                                            </span>
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>{row.attendancePercent?.toFixed(0)}%</td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <span style={{
-                                                padding: '3px 10px',
-                                                borderRadius: '10px',
-                                                fontSize: '12px',
-                                                fontWeight: '500',
-                                                background: row.eligible ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                                                color: row.eligible ? 'var(--success)' : 'var(--danger)'
-                                            }}>
-                                                {row.eligible ? <><FiCheckCircle style={{ marginRight: '2px' }} /> Yes</> : <><FiXCircle style={{ marginRight: '2px' }} /> No</>}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                {showIaPreview && iaPreview && iaPreview.iaPreview?.length === 0 && (
-                    <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        No students found for IA preview.
-                    </div>
-                )}
             </div>
+
+            {message && (
+                <div className={`alert ${message.includes('Failed') || message.includes('must') || message.includes('cannot') || message.includes('failed') ? 'alert-error' : 'alert-success'}`} style={{ marginBottom: '16px' }}>
+                    {message}
+                </div>
+            )}
+
+            {/* Info Banner */}
+            <div style={{
+                padding: '12px 16px', marginBottom: '16px',
+                background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.12)',
+                borderRadius: '10px', fontSize: '12px', color: 'var(--text-secondary)'
+            }}>
+                <strong>Fixed Test Types:</strong> IA1 (/20) • IA2 (/20) • ESE (/80) • Oral (/25) — 
+                Term Work (/25) is auto-calculated from the Assignments section.
+            </div>
+
+            {/* Marks Entry Table */}
+            <div className="table-container" style={{ overflowX: 'auto' }}>
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th style={{ position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: '40px' }}>#</th>
+                            <th style={{ position: 'sticky', left: '40px', background: 'var(--bg-secondary)', zIndex: 2, minWidth: '180px' }}>Student</th>
+                            {editableTypes.map(tt => (
+                                <th key={tt.key} style={{ textAlign: 'center', minWidth: '100px' }}>
+                                    {tt.name}
+                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 400 }}>/{tt.maxScore}</div>
+                                </th>
+                            ))}
+                            <th style={{ textAlign: 'center', minWidth: '90px', background: 'rgba(99,102,241,0.05)' }}>
+                                Term Work
+                                <div style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 400 }}>/25 (Auto)</div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {students.map((student, idx) => (
+                            <tr key={student._id}>
+                                <td style={{ position: 'sticky', left: 0, background: 'var(--bg-primary)', zIndex: 1 }}>{idx + 1}</td>
+                                <td style={{ position: 'sticky', left: '40px', background: 'var(--bg-primary)', zIndex: 1, fontWeight: 500 }}>
+                                    {student.fullName}
+                                </td>
+                                {editableTypes.map(tt => (
+                                    <td key={tt.key} style={{ textAlign: 'center', padding: '4px' }}>
+                                        <input
+                                            id={`test-${tt.name}-${student._id}`}
+                                            type="number"
+                                            min="0"
+                                            max={tt.maxScore}
+                                            step="0.5"
+                                            defaultValue={getScore(tt.name, student._id)}
+                                            style={{
+                                                width: '70px', textAlign: 'center', padding: '6px',
+                                                border: '1px solid var(--border)', borderRadius: '6px',
+                                                background: 'var(--bg-primary)', color: 'var(--text-primary)',
+                                                fontSize: '13px'
+                                            }}
+                                        />
+                                    </td>
+                                ))}
+                                <td style={{
+                                    textAlign: 'center', fontSize: '13px', fontWeight: 600,
+                                    color: 'var(--primary)', background: 'rgba(99,102,241,0.03)'
+                                }}>
+                                    —
+                                    <div style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-secondary)' }}>
+                                        See Assignments
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Save Buttons */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
+                {editableTypes.map(tt => (
+                    <button
+                        key={tt.key}
+                        className="btn btn-primary btn-sm"
+                        onClick={() => saveTestType(tt.name)}
+                        disabled={saving}
+                    >
+                        <FiSave style={{ marginRight: '4px' }} /> Save {tt.name}
+                    </button>
+                ))}
+            </div>
+
+            {/* Upload Modal */}
+            {showUploadModal && createPortal(
+                <>
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(0,0,0,0.5)', zIndex: 9998
+                    }} onClick={() => setShowUploadModal(false)} />
+                    <div style={{
+                        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                        background: 'var(--white, #ffffff)', borderRadius: '16px', padding: '28px',
+                        width: '90%', maxWidth: '480px', zIndex: 9999,
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.3)', color: 'var(--gray-800)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h3 style={{ margin: 0, fontSize: '18px' }}>
+                                <FiUpload style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+                                Upload Test Marks
+                            </h3>
+                            <button onClick={() => setShowUploadModal(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px' }}>
+                                <FiX size={20} />
+                            </button>
+                        </div>
+
+                        {/* Download Template */}
+                        <div style={{
+                            background: 'var(--gray-50)', border: '1px solid var(--gray-200)',
+                            borderRadius: '12px', padding: '16px', marginBottom: '20px'
+                        }}>
+                            <p style={{ margin: '0 0 10px', fontSize: '13px', color: 'var(--gray-500)' }}>
+                                Download the template first, fill in scores (IA1, IA2, ESE, Oral), then upload.
+                            </p>
+                            <button className="btn btn-outline btn-sm" onClick={handleDownloadTemplate} style={{ width: '100%' }}>
+                                <FiDownload style={{ marginRight: '6px' }} /> Download Test Marks Template
+                            </button>
+                        </div>
+
+                        {/* File Upload Area */}
+                        <div
+                            style={{
+                                border: `2px dashed ${selectedFile ? 'var(--success)' : 'var(--gray-300)'}`,
+                                borderRadius: '12px', padding: '24px', textAlign: 'center',
+                                cursor: 'pointer', marginBottom: '20px',
+                                background: selectedFile ? 'rgba(16,185,129,0.05)' : 'transparent',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            {selectedFile ? (
+                                <>
+                                    <FiFile size={28} style={{ color: 'var(--success)', marginBottom: '8px' }} />
+                                    <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>{selectedFile.name}</p>
+                                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                        {(selectedFile.size / 1024).toFixed(1)} KB • Click to change file
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <FiUpload size={28} style={{ color: 'var(--text-secondary)', marginBottom: '8px' }} />
+                                    <p style={{ margin: 0, fontWeight: 500, color: 'var(--text-primary)' }}>Click to select Excel file</p>
+                                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                        Supports .xlsx and .xls files
+                                    </p>
+                                </>
+                            )}
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                accept=".xlsx,.xls"
+                                style={{ display: 'none' }}
+                                onChange={(e) => setSelectedFile(e.target.files[0] || null)}
+                            />
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                            <button className="btn btn-secondary" onClick={() => setShowUploadModal(false)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleUpload} disabled={!selectedFile || saving}>
+                                <FiUpload style={{ marginRight: '4px' }} /> {saving ? 'Uploading...' : 'Upload'}
+                            </button>
+                        </div>
+                    </div>
+                </>,
+                document.body
+            )}
+
+            {/* View Final Score Modal */}
+            {showSummary && createPortal(
+                <>
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(0,0,0,0.6)', zIndex: 9998
+                    }} onClick={() => setShowSummary(false)} />
+                    <div style={{
+                        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                        background: 'var(--white, #ffffff)', borderRadius: '16px', padding: '28px',
+                        width: '95%', maxWidth: '900px', maxHeight: '85vh', overflowY: 'auto',
+                        zIndex: 9999, boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FiAward style={{ color: 'var(--primary)' }} /> Marks Summary — {decodedSubject}
+                            </h3>
+                            <button onClick={() => setShowSummary(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px' }}>
+                                <FiX size={20} />
+                            </button>
+                        </div>
+
+                        {summaryLoading ? (
+                            <div style={{ textAlign: 'center', padding: '40px' }}>
+                                <div className="spinner"></div>
+                                <p style={{ color: 'var(--text-secondary)', marginTop: '12px' }}>Calculating...</p>
+                            </div>
+                        ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table className="data-table" style={{ fontSize: '12px' }}>
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Student</th>
+                                            <th style={{ textAlign: 'center' }}>IA1<br/><small>/20</small></th>
+                                            <th style={{ textAlign: 'center' }}>IA2<br/><small>/20</small></th>
+                                            <th style={{ textAlign: 'center' }}>Final IA<br/><small>/20</small></th>
+                                            <th style={{ textAlign: 'center' }}>TW<br/><small>/25</small></th>
+                                            <th style={{ textAlign: 'center' }}>Oral<br/><small>/25</small></th>
+                                            <th style={{ textAlign: 'center' }}>ESE<br/><small>/80</small></th>
+                                            <th style={{ textAlign: 'center' }}>Total<br/><small>/150</small></th>
+                                            <th style={{ textAlign: 'center' }}>%</th>
+                                            <th style={{ textAlign: 'center' }}>Grade</th>
+                                            <th style={{ textAlign: 'center' }}>Att%</th>
+                                            <th style={{ textAlign: 'center' }}>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {marksSummary.map((ms, idx) => (
+                                            <tr key={ms.studentId}>
+                                                <td>{idx + 1}</td>
+                                                <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{ms.fullName}</td>
+                                                <td style={{ textAlign: 'center' }}>{ms.ia1 ?? '—'}</td>
+                                                <td style={{ textAlign: 'center' }}>{ms.ia2 ?? '—'}</td>
+                                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{ms.finalIA ?? '—'}</td>
+                                                <td style={{ textAlign: 'center' }}>{ms.tw ?? '—'}</td>
+                                                <td style={{ textAlign: 'center' }}>{ms.oralExam ?? '—'}</td>
+                                                <td style={{ textAlign: 'center' }}>{ms.ese ?? '—'}</td>
+                                                <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--primary)' }}>{ms.total ?? '—'}</td>
+                                                <td style={{ textAlign: 'center' }}>{ms.percentage !== null ? `${ms.percentage}%` : '—'}</td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    {ms.grade ? (
+                                                        <span style={{
+                                                            padding: '2px 8px', borderRadius: '8px', fontWeight: 700, fontSize: '12px',
+                                                            background: ms.grade === 'F' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                                                            color: ms.grade === 'F' ? '#ef4444' : '#10b981'
+                                                        }}>
+                                                            {ms.grade}
+                                                        </span>
+                                                    ) : '—'}
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    {ms.attendancePercent !== null ? (
+                                                        <span style={{
+                                                            color: ms.attendancePercent >= 75 ? 'var(--success)' : 'var(--danger)',
+                                                            fontWeight: 500
+                                                        }}>
+                                                            {ms.attendancePercent}%
+                                                        </span>
+                                                    ) : '—'}
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>{getStatusBadge(ms.status)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </>,
+                document.body
+            )}
         </div>
     );
 };

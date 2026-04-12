@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { FiUser, FiMail, FiPhone, FiCalendar, FiMapPin, FiInfo, FiUsers, FiSave, FiEdit, FiLock, FiKey, FiBook, FiHash, FiLayers, FiGrid, FiHeart } from 'react-icons/fi';
+import { FiUser, FiMail, FiPhone, FiCalendar, FiMapPin, FiInfo, FiUsers, FiSave, FiEdit, FiLock, FiKey, FiBook, FiHash, FiLayers, FiGrid, FiHeart, FiCheckCircle, FiArrowRight, FiArrowLeft } from 'react-icons/fi';
+import { AiFillEye, AiFillEyeInvisible } from 'react-icons/ai';
 
 const Profile = () => {
     const { user } = useAuth();
@@ -13,13 +14,18 @@ const Profile = () => {
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
     const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [passwordStep, setPasswordStep] = useState(1); // 1 = verify old, 2 = enter new
     const [passwordData, setPasswordData] = useState({
         currentPassword: '',
         newPassword: '',
         confirmPassword: ''
     });
     const [passwordSaving, setPasswordSaving] = useState(false);
+    const [passwordVerifying, setPasswordVerifying] = useState(false);
     const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
+    const [showCurrentPw, setShowCurrentPw] = useState(false);
+    const [showNewPw, setShowNewPw] = useState(false);
+    const [showConfirmPw, setShowConfirmPw] = useState(false);
 
     const [formData, setFormData] = useState({
         about: '',
@@ -100,6 +106,44 @@ const Profile = () => {
         }
     };
 
+    const resetPasswordModal = () => {
+        setShowPasswordModal(false);
+        setPasswordStep(1);
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setPasswordMessage({ type: '', text: '' });
+        setShowCurrentPw(false);
+        setShowNewPw(false);
+        setShowConfirmPw(false);
+    };
+
+    // Step 1: Verify old password
+    const handleVerifyPassword = async (e) => {
+        e.preventDefault();
+        setPasswordMessage({ type: '', text: '' });
+
+        if (!passwordData.currentPassword) {
+            setPasswordMessage({ type: 'error', text: 'Please enter your current password' });
+            return;
+        }
+
+        setPasswordVerifying(true);
+        try {
+            await api.post('/profile/verify-password', {
+                currentPassword: passwordData.currentPassword
+            });
+            setPasswordMessage({ type: 'success', text: 'Password verified! Now set your new password.' });
+            setTimeout(() => {
+                setPasswordStep(2);
+                setPasswordMessage({ type: '', text: '' });
+            }, 800);
+        } catch (error) {
+            setPasswordMessage({ type: 'error', text: error.response?.data?.message || 'Password verification failed' });
+        } finally {
+            setPasswordVerifying(false);
+        }
+    };
+
+    // Step 2: Set new password
     const handlePasswordChange = async (e) => {
         e.preventDefault();
         setPasswordMessage({ type: '', text: '' });
@@ -123,9 +167,7 @@ const Profile = () => {
             });
             setPasswordMessage({ type: 'success', text: 'Password changed successfully!' });
             setTimeout(() => {
-                setShowPasswordModal(false);
-                setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                setPasswordMessage({ type: '', text: '' });
+                resetPasswordModal();
             }, 1500);
         } catch (error) {
             console.error('Failed to change password:', error);
@@ -180,7 +222,7 @@ const Profile = () => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                             className="btn btn-secondary"
-                            onClick={() => { setShowPasswordModal(true); setPasswordMessage({ type: '', text: '' }); }}
+                            onClick={() => { setShowPasswordModal(true); setPasswordStep(1); setPasswordMessage({ type: '', text: '' }); }}
                             style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                         >
                             <FiKey size={16} /> Change Password
@@ -604,7 +646,7 @@ const Profile = () => {
                 </>
             )}
 
-            {/* Password Change Modal */}
+            {/* Password Change Modal - 2 Step Flow */}
             {showPasswordModal && (
                 <div className="modal-overlay" style={{
                     position: 'fixed',
@@ -616,21 +658,26 @@ const Profile = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    zIndex: 1000
+                    zIndex: 1000,
+                    opacity: 1,
+                    visibility: 'visible'
                 }}>
                     <div className="modal-content" style={{
                         background: 'white',
                         borderRadius: '12px',
                         width: '100%',
-                        maxWidth: '400px',
-                        margin: '16px'
+                        maxWidth: '440px',
+                        margin: '16px',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+                        overflow: 'hidden'
                     }}>
+                        {/* Modal Header */}
                         <div className="card-header" style={{ borderBottom: '1px solid var(--gray-200)' }}>
                             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <FiLock size={18} /> Change Password
                             </h3>
                             <button
-                                onClick={() => { setShowPasswordModal(false); setPasswordMessage({ type: '', text: '' }); }}
+                                onClick={resetPasswordModal}
                                 style={{
                                     background: 'none',
                                     border: 'none',
@@ -642,67 +689,289 @@ const Profile = () => {
                                 &times;
                             </button>
                         </div>
-                        <form onSubmit={handlePasswordChange} style={{ padding: '24px' }}>
-                            {passwordMessage.text && (
+
+                        {/* Step Indicator */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0',
+                            padding: '16px 24px',
+                            background: 'var(--gray-50, #f9fafb)',
+                            borderBottom: '1px solid var(--gray-200, #e5e7eb)'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                flex: 1
+                            }}>
                                 <div style={{
-                                    marginBottom: '16px',
-                                    padding: '10px 14px',
-                                    borderRadius: '8px',
-                                    background: passwordMessage.type === 'success' ? 'var(--success-light, #d1fae5)' : 'var(--danger-light, #fee2e2)',
-                                    color: passwordMessage.type === 'success' ? 'var(--success, #059669)' : 'var(--danger, #dc2626)',
-                                    fontSize: '0.9rem'
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '50%',
+                                    background: passwordStep >= 1 ? 'var(--primary, #4f46e5)' : 'var(--gray-300)',
+                                    color: 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600',
+                                    transition: 'all 0.3s ease'
                                 }}>
-                                    {passwordMessage.text}
+                                    {passwordStep > 1 ? <FiCheckCircle size={14} /> : '1'}
                                 </div>
-                            )}
-                            <div className="form-group" style={{ marginBottom: '16px' }}>
-                                <label>Current Password</label>
-                                <input
-                                    type="password"
-                                    value={passwordData.currentPassword}
-                                    onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-                                    placeholder="Enter current password"
-                                    required
-                                />
+                                <span style={{
+                                    fontSize: '0.85rem',
+                                    fontWeight: passwordStep === 1 ? '600' : '400',
+                                    color: passwordStep >= 1 ? 'var(--gray-800)' : 'var(--gray-400)'
+                                }}>Verify Identity</span>
                             </div>
-                            <div className="form-group" style={{ marginBottom: '16px' }}>
-                                <label>New Password</label>
-                                <input
-                                    type="password"
-                                    value={passwordData.newPassword}
-                                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                                    placeholder="Enter new password"
-                                    required
-                                    minLength={6}
-                                />
+                            <div style={{
+                                width: '40px',
+                                height: '2px',
+                                background: passwordStep > 1 ? 'var(--primary, #4f46e5)' : 'var(--gray-300)',
+                                transition: 'all 0.3s ease'
+                            }} />
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                flex: 1,
+                                justifyContent: 'flex-end'
+                            }}>
+                                <div style={{
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '50%',
+                                    background: passwordStep >= 2 ? 'var(--primary, #4f46e5)' : 'var(--gray-300)',
+                                    color: 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600',
+                                    transition: 'all 0.3s ease'
+                                }}>
+                                    2
+                                </div>
+                                <span style={{
+                                    fontSize: '0.85rem',
+                                    fontWeight: passwordStep === 2 ? '600' : '400',
+                                    color: passwordStep >= 2 ? 'var(--gray-800)' : 'var(--gray-400)'
+                                }}>New Password</span>
                             </div>
-                            <div className="form-group" style={{ marginBottom: '24px' }}>
-                                <label>Confirm New Password</label>
-                                <input
-                                    type="password"
-                                    value={passwordData.confirmPassword}
-                                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                                    placeholder="Confirm new password"
-                                    required
-                                />
+                        </div>
+
+                        {/* Message Display */}
+                        {passwordMessage.text && (
+                            <div style={{
+                                margin: '16px 24px 0',
+                                padding: '10px 14px',
+                                borderRadius: '8px',
+                                background: passwordMessage.type === 'success' ? 'var(--success-light, #d1fae5)' : 'var(--danger-light, #fee2e2)',
+                                color: passwordMessage.type === 'success' ? 'var(--success, #059669)' : 'var(--danger, #dc2626)',
+                                fontSize: '0.9rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                            }}>
+                                {passwordMessage.type === 'success' && <FiCheckCircle size={16} />}
+                                {passwordMessage.text}
                             </div>
-                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    onClick={() => { setShowPasswordModal(false); setPasswordMessage({ type: '', text: '' }); }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary"
-                                    disabled={passwordSaving}
-                                >
-                                    {passwordSaving ? 'Changing...' : 'Change Password'}
-                                </button>
-                            </div>
-                        </form>
+                        )}
+
+                        {/* Step 1: Verify Old Password */}
+                        {passwordStep === 1 && (
+                            <form onSubmit={handleVerifyPassword} style={{ padding: '24px' }}>
+                                <p style={{
+                                    color: 'var(--gray-600)',
+                                    fontSize: '0.9rem',
+                                    marginBottom: '20px',
+                                    marginTop: 0,
+                                    lineHeight: 1.5
+                                }}>
+                                    For security, please verify your identity by entering your current password.
+                                </p>
+                                <div className="form-group" style={{ marginBottom: '24px' }}>
+                                    <label style={{ fontWeight: '500', marginBottom: '6px', display: 'block' }}>Current Password</label>
+                                    <div style={{ position: 'relative' }}>
+                                        <input
+                                            type={showCurrentPw ? 'text' : 'password'}
+                                            value={passwordData.currentPassword}
+                                            onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                                            placeholder="Enter your current password"
+                                            required
+                                            autoFocus
+                                            style={{ paddingRight: '40px' }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCurrentPw(!showCurrentPw)}
+                                            style={{
+                                                position: 'absolute',
+                                                right: '10px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontSize: '18px',
+                                                color: 'var(--gray-500)',
+                                                padding: '4px',
+                                                display: 'flex',
+                                                alignItems: 'center'
+                                            }}
+                                            title={showCurrentPw ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showCurrentPw ? <AiFillEye /> : <AiFillEyeInvisible />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={resetPasswordModal}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary"
+                                        disabled={passwordVerifying || !passwordData.currentPassword}
+                                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                                    >
+                                        {passwordVerifying ? (
+                                            <>
+                                                <span className="spinner" style={{ width: '14px', height: '14px' }}></span>
+                                                Verifying...
+                                            </>
+                                        ) : (
+                                            <>
+                                                Verify & Continue <FiArrowRight size={14} />
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+
+                        {/* Step 2: Enter New Password */}
+                        {passwordStep === 2 && (
+                            <form onSubmit={handlePasswordChange} style={{ padding: '24px' }}>
+                                <p style={{
+                                    color: 'var(--gray-600)',
+                                    fontSize: '0.9rem',
+                                    marginBottom: '20px',
+                                    marginTop: 0,
+                                    lineHeight: 1.5
+                                }}>
+                                    Identity verified! Now enter your new password below.
+                                </p>
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label style={{ fontWeight: '500', marginBottom: '6px', display: 'block' }}>New Password</label>
+                                    <div style={{ position: 'relative' }}>
+                                        <input
+                                            type={showNewPw ? 'text' : 'password'}
+                                            value={passwordData.newPassword}
+                                            onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                            placeholder="Enter new password (min 6 characters)"
+                                            required
+                                            minLength={6}
+                                            autoFocus
+                                            style={{ paddingRight: '40px' }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNewPw(!showNewPw)}
+                                            style={{
+                                                position: 'absolute',
+                                                right: '10px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontSize: '18px',
+                                                color: 'var(--gray-500)',
+                                                padding: '4px',
+                                                display: 'flex',
+                                                alignItems: 'center'
+                                            }}
+                                            title={showNewPw ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showNewPw ? <AiFillEye /> : <AiFillEyeInvisible />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '24px' }}>
+                                    <label style={{ fontWeight: '500', marginBottom: '6px', display: 'block' }}>Confirm New Password</label>
+                                    <div style={{ position: 'relative' }}>
+                                        <input
+                                            type={showConfirmPw ? 'text' : 'password'}
+                                            value={passwordData.confirmPassword}
+                                            onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                            placeholder="Confirm your new password"
+                                            required
+                                            style={{ paddingRight: '40px' }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmPw(!showConfirmPw)}
+                                            style={{
+                                                position: 'absolute',
+                                                right: '10px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontSize: '18px',
+                                                color: 'var(--gray-500)',
+                                                padding: '4px',
+                                                display: 'flex',
+                                                alignItems: 'center'
+                                            }}
+                                            title={showConfirmPw ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showConfirmPw ? <AiFillEye /> : <AiFillEyeInvisible />}
+                                        </button>
+                                    </div>
+                                    {passwordData.confirmPassword && passwordData.newPassword !== passwordData.confirmPassword && (
+                                        <small style={{ color: 'var(--danger, #dc2626)', fontSize: '0.8rem', marginTop: '4px', display: 'block' }}>
+                                            Passwords do not match
+                                        </small>
+                                    )}
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => { setPasswordStep(1); setPasswordData(prev => ({ ...prev, newPassword: '', confirmPassword: '' })); setPasswordMessage({ type: '', text: '' }); setShowNewPw(false); setShowConfirmPw(false); }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                                    >
+                                        <FiArrowLeft size={14} /> Back
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary"
+                                        disabled={passwordSaving || !passwordData.newPassword || !passwordData.confirmPassword}
+                                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                                    >
+                                        {passwordSaving ? (
+                                            <>
+                                                <span className="spinner" style={{ width: '14px', height: '14px' }}></span>
+                                                Changing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FiLock size={14} /> Change Password
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                     </div>
                 </div>
             )}
