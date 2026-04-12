@@ -1290,11 +1290,22 @@ router.post('/assignments/upload', upload.single('file'), async (req, res) => {
 
         const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(sheet);
+        // Template has 4 header rows (title, max score, instructions, blank) before actual column headers
+        // Try parsing with range:4 first (for template files), fall back to default (for plain files)
+        let data = XLSX.utils.sheet_to_json(sheet, { range: 4 });
+        if (data.length === 0 || (!data[0]?.['Roll No'] && !data[0]?.['Username'] && !data[0]?.['Student Name'])) {
+            // Fallback: try without range skip (plain Excel without header rows)
+            data = XLSX.utils.sheet_to_json(sheet);
+        }
 
-        const students = await User.find({ role: 'student', classId }).select('fullName username');
-        const studentMap = {};
-        students.forEach(s => { studentMap[s.username?.toLowerCase()] = s._id.toString(); });
+        const students = await User.find({ role: 'student', classId }).select('fullName username').sort({ lastName: 1 });
+        // Build lookup maps for matching students by username, full name, or row number
+        const usernameMap = {};
+        const nameMap = {};
+        students.forEach((s, idx) => {
+            if (s.username) usernameMap[s.username.toLowerCase()] = s._id.toString();
+            if (s.fullName) nameMap[s.fullName.toLowerCase().trim()] = s._id.toString();
+        });
 
         let savedCount = 0;
         const errors = [];
@@ -1309,9 +1320,22 @@ router.post('/assignments/upload', upload.single('file'), async (req, res) => {
             if (!numberCols.includes(colName)) continue;
 
             const marks = [];
-            for (const row of data) {
-                const rollNo = (row['Roll No'] || row['rollNo'] || row['Username'] || '').toString().toLowerCase();
-                const studentId = studentMap[rollNo];
+            for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
+                const row = data[rowIdx];
+                const rollNo = (row['Roll No'] || row['rollNo'] || row['Username'] || '').toString().trim().toLowerCase();
+                const studentName = (row['Student Name'] || row['Name'] || '').toString().trim().toLowerCase();
+
+                // Try matching by username first, then by name, then by row index
+                let studentId = usernameMap[rollNo] || nameMap[studentName] || nameMap[rollNo];
+
+                // Fallback: match by row index if Roll No is a sequential number
+                if (!studentId && /^\d+$/.test(rollNo)) {
+                    const idx = parseInt(rollNo) - 1;
+                    if (idx >= 0 && idx < students.length) {
+                        studentId = students[idx]._id.toString();
+                    }
+                }
+
                 if (!studentId) {
                     if (rollNo) errors.push(`Student not found: ${rollNo}`);
                     continue;
@@ -1333,7 +1357,7 @@ router.post('/assignments/upload', upload.single('file'), async (req, res) => {
             }
         }
 
-        res.json({ message: `Uploaded ${savedCount} ${label.toLowerCase()} entries`, errors });
+        res.json({ message: `Uploaded ${savedCount} ${label.toLowerCase()} entries successfully`, errors });
     } catch (error) {
         console.error('Upload assignments error:', error);
         res.status(500).json({ message: 'Server error' });
@@ -1383,10 +1407,10 @@ router.get('/assignments/:classId/:subject/template', async (req, res) => {
             cell.alignment = { horizontal: 'center' };
         });
 
-        // Student rows with empty scores
+        // Student rows with empty scores - use username as Roll No for upload matching
         for (let idx = 0; idx < students.length; idx++) {
             const student = students[idx];
-            const row = [idx + 1, student.fullName];
+            const row = [student.username || (idx + 1), student.fullName];
             for (let i = 0; i < total; i++) row.push('');
             const dataRow = ws.addRow(row);
             dataRow.eachCell((cell, colNumber) => {

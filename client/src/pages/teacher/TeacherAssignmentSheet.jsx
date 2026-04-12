@@ -162,20 +162,17 @@ const TeacherAssignmentSheet = () => {
             const res = await api.post('/teacher/assignments/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            setMessage(res.data.message || 'Upload successful!');
-            fetchData();
-            setShowUploadModal(false);
-            setSelectedFile(null);
             if (res.data.errors?.length > 0) {
                 console.warn('Upload errors:', res.data.errors);
             }
+            // Reload page to refresh uncontrolled inputs with new data from DB
+            window.location.reload();
         } catch (err) {
             setMessage('Upload failed');
-        } finally {
             setSaving(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
+            setTimeout(() => setMessage(''), 4000);
         }
-        setTimeout(() => setMessage(''), 4000);
     };
 
     const openUploadModal = (type) => {
