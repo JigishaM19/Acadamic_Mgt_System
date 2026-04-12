@@ -24,7 +24,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Middleware to ensure Class Coordinator access and get their assigned class
 const ccOnly = async (req, res, next) => {
     try {
-        if (req.user.role !== 'classcoordinator') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'classcoordinator') {
             return res.status(403).json({ message: 'Access denied. Class Coordinators only.' });
         }
 

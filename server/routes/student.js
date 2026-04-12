@@ -19,16 +19,17 @@ const { createNotification } = require('../utils/notificationUtils');
 
 // Middleware to ensure student or parent access
 const studentParentOnly = (req, res, next) => {
-    if (req.user.role !== 'student' && req.user.role !== 'parent') {
+    const activeRole = req.activeRole || req.user.role;
+    if (activeRole !== 'student' && activeRole !== 'parent') {
         return res.status(403).json({ message: 'Access denied. Student or Parent only.' });
     }
 
     // For students, use their own ID
     // For parents, use their linked child's ID
-    if (req.user.role === 'student') {
+    if (activeRole === 'student') {
         req.studentId = req.user._id;
         req.studentClassId = req.user.classId;
-    } else if (req.user.role === 'parent') {
+    } else if (activeRole === 'parent') {
         if (!req.user.childUserId) {
             return res.status(400).json({ message: 'Parent account not linked to any student.' });
         }

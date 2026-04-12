@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { FiCalendar, FiMapPin, FiClipboard, FiBarChart2, FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiClipboard, FiBarChart2, FiCheckCircle, FiXCircle, FiAlertTriangle } from 'react-icons/fi';
 import { FaExclamationTriangle } from 'react-icons/fa';
 import { BsEmojiSmile } from 'react-icons/bs';
 import DashboardAnnouncementsBanner from '../../components/DashboardAnnouncementsBanner';
@@ -74,10 +74,112 @@ const StudentDashboard = () => {
 
     const todayName = getTodayName();
 
+    // Compute defaulter subjects (ineligible due to low attendance)
+    const defaulterSubjects = stats?.attendanceStats?.filter(s => s.eligible === false && s.totalLectures > 0) || [];
+    const isParent = user?.role === 'parent' || user?.activeRole === 'parent';
+
     return (
         <div className="page-container">
             {/* Announcements Banner */}
             <DashboardAnnouncementsBanner />
+
+            {/* Defaulter Alert Banner */}
+            {defaulterSubjects.length > 0 && (
+                <div style={{
+                    background: 'linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%)',
+                    border: '1.5px solid #fca5a5',
+                    borderRadius: '14px',
+                    padding: '20px 24px',
+                    marginBottom: '24px',
+                    boxShadow: '0 4px 16px rgba(239, 68, 68, 0.1)',
+                    animation: 'fadeInSlide 0.4s ease-out'
+                }}>
+                    {/* Header */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '14px'
+                    }}>
+                        <div style={{
+                            width: '42px', height: '42px',
+                            borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0,
+                            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                        }}>
+                            <FiAlertTriangle size={22} color="#fff" />
+                        </div>
+                        <div>
+                            <h3 style={{
+                                margin: 0, fontSize: '1.05rem', fontWeight: 700,
+                                color: '#991b1b'
+                            }}>
+                                {isParent ? 'Your Ward is a Defaulter' : 'Attendance Defaulter Alert'}
+                            </h3>
+                            <p style={{
+                                margin: '2px 0 0 0', fontSize: '0.82rem',
+                                color: '#b91c1c', fontWeight: 500
+                            }}>
+                                {isParent
+                                    ? `Your ward's attendance is below the minimum requirement in ${defaulterSubjects.length} subject${defaulterSubjects.length > 1 ? 's' : ''}. Immediate action is needed.`
+                                    : `Your attendance is below the minimum requirement in ${defaulterSubjects.length} subject${defaulterSubjects.length > 1 ? 's' : ''}. You may be detained from exams.`
+                                }
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Subject-wise details */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                        gap: '10px'
+                    }}>
+                        {defaulterSubjects.map((subj, idx) => (
+                            <div key={idx} style={{
+                                background: 'rgba(255,255,255,0.85)',
+                                border: '1px solid #fecaca',
+                                borderRadius: '10px',
+                                padding: '12px 16px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '10px'
+                            }}>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1f2937' }}>
+                                        {subj.subject}
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '2px' }}>
+                                        {subj.attended}/{subj.totalLectures} lectures attended
+                                    </div>
+                                </div>
+                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                    <div style={{
+                                        fontSize: '1.1rem', fontWeight: 700,
+                                        color: subj.percentage < 60 ? '#dc2626' : '#f59e0b'
+                                    }}>
+                                        {subj.percentage}%
+                                    </div>
+                                    {subj.classesNeeded > 0 && (
+                                        <div style={{
+                                            fontSize: '0.72rem', fontWeight: 600,
+                                            color: '#dc2626',
+                                            background: 'rgba(239,68,68,0.08)',
+                                            padding: '2px 8px',
+                                            borderRadius: '6px',
+                                            marginTop: '2px'
+                                        }}>
+                                            Need {subj.classesNeeded} more
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Student Info Header */}
             <div className="info-header">

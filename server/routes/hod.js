@@ -22,7 +22,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // Middleware to ensure HOD access and attach department
 const hodOnly = async (req, res, next) => {
-    if (req.user.role !== 'hod') {
+    const activeRole = req.activeRole || req.user.role;
+    if (activeRole !== 'hod') {
         return res.status(403).json({ message: 'Access denied. HOD only.' });
     }
     if (!req.user.departmentId) {

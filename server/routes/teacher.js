@@ -23,7 +23,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Middleware to ensure teacher access
 const teacherOnly = async (req, res, next) => {
     try {
-        if (!req.user || (req.user.role !== 'teacher' && req.user.role !== 'classcoordinator')) {
+        const activeRole = req.activeRole || req.user.role;
+        if (!req.user || (activeRole !== 'teacher' && activeRole !== 'classcoordinator')) {
             return res.status(403).json({ message: 'Access denied. Teachers only.' });
         }
         req.teacherId = req.user._id;

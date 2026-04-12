@@ -18,7 +18,8 @@ router.use(auth);
 // @desc    Get active (non-expired) announcements for dashboard display
 router.get('/feed', async (req, res) => {
     try {
-        const filter = await buildAnnouncementFilter(req.user);
+        const activeRole = req.activeRole || req.user.role;
+        const filter = await buildAnnouncementFilter(req.user, activeRole);
         // Only non-expired for dashboard
         filter.expiresAt = { $gt: new Date() };
 
@@ -43,11 +44,12 @@ router.get('/feed', async (req, res) => {
 // @desc    Get all announcements visible to HOD (own + CC/Teacher in dept)
 router.get('/hod', async (req, res) => {
     try {
-        if (req.user.role !== 'hod') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'hod') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
-        const filter = await buildAnnouncementFilter(req.user);
+        const filter = await buildAnnouncementFilter(req.user, activeRole);
 
         const announcements = await Announcement.find(filter)
             .populate('createdBy', 'fullName role')
@@ -65,7 +67,8 @@ router.get('/hod', async (req, res) => {
 // @desc    Create announcement by HOD
 router.post('/hod', async (req, res) => {
     try {
-        if (req.user.role !== 'hod') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'hod') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -139,7 +142,8 @@ router.post('/hod', async (req, res) => {
 // @route   DELETE /api/announcements/hod/:id
 router.delete('/hod/:id', async (req, res) => {
     try {
-        if (req.user.role !== 'hod') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'hod') {
             return res.status(403).json({ message: 'Access denied' });
         }
         const announcement = await Announcement.findById(req.params.id);
@@ -158,7 +162,8 @@ router.delete('/hod/:id', async (req, res) => {
 // @route   GET /api/announcements/hod/classes
 router.get('/hod/classes', async (req, res) => {
     try {
-        if (req.user.role !== 'hod') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'hod') {
             return res.status(403).json({ message: 'Access denied' });
         }
         const classes = await Class.find({ departmentId: req.user.departmentId }).sort({ year: 1, name: 1 });
@@ -176,10 +181,11 @@ router.get('/hod/classes', async (req, res) => {
 // @route   GET /api/announcements/cc
 router.get('/cc', async (req, res) => {
     try {
-        if (req.user.role !== 'classcoordinator') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'classcoordinator') {
             return res.status(403).json({ message: 'Access denied' });
         }
-        const filter = await buildAnnouncementFilter(req.user);
+        const filter = await buildAnnouncementFilter(req.user, activeRole);
 
         const announcements = await Announcement.find(filter)
             .populate('createdBy', 'fullName role')
@@ -196,7 +202,8 @@ router.get('/cc', async (req, res) => {
 // @route   POST /api/announcements/cc
 router.post('/cc', async (req, res) => {
     try {
-        if (req.user.role !== 'classcoordinator') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'classcoordinator') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -250,7 +257,8 @@ router.post('/cc', async (req, res) => {
 // @route   DELETE /api/announcements/cc/:id
 router.delete('/cc/:id', async (req, res) => {
     try {
-        if (req.user.role !== 'classcoordinator') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'classcoordinator') {
             return res.status(403).json({ message: 'Access denied' });
         }
         const announcement = await Announcement.findById(req.params.id);
@@ -273,11 +281,12 @@ router.delete('/cc/:id', async (req, res) => {
 // @route   GET /api/announcements/teacher
 router.get('/teacher', async (req, res) => {
     try {
-        if (req.user.role !== 'teacher') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'teacher') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
-        const filter = await buildAnnouncementFilter(req.user);
+        const filter = await buildAnnouncementFilter(req.user, activeRole);
 
         const announcements = await Announcement.find(filter)
             .populate('createdBy', 'fullName role')
@@ -294,7 +303,8 @@ router.get('/teacher', async (req, res) => {
 // @route   GET /api/announcements/teacher/classes
 router.get('/teacher/classes', async (req, res) => {
     try {
-        if (req.user.role !== 'teacher') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'teacher') {
             return res.status(403).json({ message: 'Access denied' });
         }
         const classIds = await Timetable.find({ teacherId: req.user._id }).distinct('classId');
@@ -309,7 +319,8 @@ router.get('/teacher/classes', async (req, res) => {
 // @route   POST /api/announcements/teacher
 router.post('/teacher', async (req, res) => {
     try {
-        if (req.user.role !== 'teacher') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'teacher') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -367,7 +378,8 @@ router.post('/teacher', async (req, res) => {
 // @route   DELETE /api/announcements/teacher/:id
 router.delete('/teacher/:id', async (req, res) => {
     try {
-        if (req.user.role !== 'teacher') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole !== 'teacher') {
             return res.status(403).json({ message: 'Access denied' });
         }
         const announcement = await Announcement.findById(req.params.id);
@@ -392,10 +404,11 @@ router.get('/student', async (req, res) => {
     try {
         let studentUser = req.user;
 
-        if (req.user.role === 'parent') {
+        const activeRole = req.activeRole || req.user.role;
+        if (activeRole === 'parent') {
             studentUser = await User.findById(req.user.childUserId);
             if (!studentUser) return res.status(404).json({ message: 'Student not found' });
-        } else if (req.user.role !== 'student') {
+        } else if (activeRole !== 'student') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -417,8 +430,8 @@ router.get('/student', async (req, res) => {
 // HELPER: Build announcement filter based on user role
 // ============================================
 
-async function buildAnnouncementFilter(user) {
-    const role = user.role;
+async function buildAnnouncementFilter(user, activeRole) {
+    const role = activeRole || user.role;
     const filter = { $or: [] };
 
     if (role === 'hod') {
