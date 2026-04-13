@@ -59,6 +59,7 @@ import StudentLeaveRequests from './pages/student/StudentLeaveRequests';
 import StudentComplaints from './pages/student/StudentComplaints';
 import StudentAnnouncements from './pages/student/StudentAnnouncements';
 import StudentAssignments from './pages/student/StudentAssignments';
+import TeacherContacts from './pages/student/TeacherContacts';
 
 // Class Coordinator Pages
 import CCDashboard from './pages/cc/CCDashboard';
@@ -279,6 +280,7 @@ function App() {
             <Route path="student/complaints" element={<StudentRoute><StudentComplaints /></StudentRoute>} />
             <Route path="student/announcements" element={<StudentRoute><StudentAnnouncements /></StudentRoute>} />
             <Route path="student/assignments" element={<StudentRoute><StudentAssignments /></StudentRoute>} />
+            <Route path="student/teacher-contacts" element={<StudentRoute><TeacherContacts /></StudentRoute>} />
             <Route path="student/about-college" element={<StudentRoute><AboutCollegePage /></StudentRoute>} />
 
             {/* Parent Routes - reuse student components */}
@@ -290,6 +292,7 @@ function App() {
             <Route path="parent/complaints" element={<ParentRoute><StudentComplaints /></ParentRoute>} />
             <Route path="parent/announcements" element={<ParentRoute><StudentAnnouncements /></ParentRoute>} />
             <Route path="parent/assignments" element={<ParentRoute><StudentAssignments /></ParentRoute>} />
+            <Route path="parent/teacher-contacts" element={<ParentRoute><TeacherContacts /></ParentRoute>} />
             <Route path="parent/about-college" element={<ParentRoute><AboutCollegePage /></ParentRoute>} />
           </Route>
 

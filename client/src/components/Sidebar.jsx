@@ -5,7 +5,7 @@ import {
     FiFileText, FiClipboard, FiMessageSquare, FiSettings,
     FiUser, FiBookOpen, FiLayers, FiMapPin, FiInfo, FiAlertTriangle
 } from 'react-icons/fi';
-import { FaBullhorn } from 'react-icons/fa';
+import { FaBullhorn, FaChalkboardTeacher } from 'react-icons/fa';
 import appLogo from '../assets/logo.svg';
 
 const Sidebar = ({ collapsed, mobileOpen, onMobileClose }) => {
@@ -70,6 +70,7 @@ const Sidebar = ({ collapsed, mobileOpen, onMobileClose }) => {
         { path: '/student/attendance', icon: <FiClipboard />, label: 'Attendance' },
         { path: '/student/tests', icon: <FiFileText />, label: 'Test Scores' },
         { path: '/student/assignments', icon: <FiBookOpen />, label: 'Assignments' },
+        { path: '/student/teacher-contacts', icon: <FaChalkboardTeacher />, label: 'Teacher Contacts' },
         { path: '/student/leave-requests', icon: <FiFileText />, label: 'Leave Requests' },
         { path: '/student/complaints', icon: <FiMessageSquare />, label: 'Complaints' },
         { path: '/student/announcements', icon: <FaBullhorn />, label: 'Announcements' },
@@ -84,6 +85,7 @@ const Sidebar = ({ collapsed, mobileOpen, onMobileClose }) => {
         { path: '/parent/attendance', icon: <FiClipboard />, label: 'Attendance' },
         { path: '/parent/tests', icon: <FiFileText />, label: 'Test Scores' },
         { path: '/parent/assignments', icon: <FiBookOpen />, label: 'Assignments' },
+        { path: '/parent/teacher-contacts', icon: <FaChalkboardTeacher />, label: 'Teacher Contacts' },
         { path: '/parent/leave-requests', icon: <FiFileText />, label: 'Leave Requests' },
         { path: '/parent/complaints', icon: <FiMessageSquare />, label: 'Complaints' },
         { path: '/parent/announcements', icon: <FaBullhorn />, label: 'Announcements' },

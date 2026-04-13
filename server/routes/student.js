@@ -942,4 +942,254 @@ router.get('/profile', async (req, res) => {
     }
 });
 
+// ============================================
+// TEACHER CONTACTS
+// ============================================
+
+// @route   GET /api/student/teacher-contacts
+// @desc    Get all teachers associated with the student's class
+router.get('/teacher-contacts', async (req, res) => {
+    try {
+        let classId = req.studentClassId;
+
+        // For parent, fetch student's classId
+        if (req.isParent) {
+            const student = await User.findById(req.studentId);
+            if (!student) {
+                return res.status(404).json({ message: 'Linked student not found' });
+            }
+            classId = student.classId;
+        }
+
+        if (!classId) {
+            return res.status(400).json({ message: 'Student is not assigned to a class' });
+        }
+
+        // Get all timetable entries for this class to find teachers
+        const timetableEntries = await Timetable.find({ classId })
+            .populate('teacherId', 'fullName firstName lastName email phone roles role gender departmentId about');
+
+        // Build a unique map of teachers with the subjects they teach
+        const teacherMap = new Map();
+        for (const entry of timetableEntries) {
+            if (!entry.teacherId) continue;
+            const tid = entry.teacherId._id.toString();
+            if (!teacherMap.has(tid)) {
+                teacherMap.set(tid, {
+                    _id: entry.teacherId._id,
+                    fullName: entry.teacherId.fullName || `${entry.teacherId.firstName || ''} ${entry.teacherId.lastName || ''}`.trim(),
+                    firstName: entry.teacherId.firstName,
+                    lastName: entry.teacherId.lastName,
+                    email: entry.teacherId.email || null,
+                    phone: entry.teacherId.phone || null,
+                    gender: entry.teacherId.gender || null,
+                    roles: entry.teacherId.roles || [entry.teacherId.role],
+                    subjects: new Set()
+                });
+            }
+            if (entry.subject && entry.subject !== 'No Lecture') {
+                teacherMap.get(tid).subjects.add(entry.subject);
+            }
+        }
+
+        // Also get Class Coordinator for this class
+        const classInfo = await Class.findById(classId)
+            .populate('coordinatorId', 'fullName firstName lastName email phone roles role gender departmentId about');
+
+        let coordinatorId = null;
+        if (classInfo?.coordinatorId) {
+            coordinatorId = classInfo.coordinatorId._id.toString();
+            if (!teacherMap.has(coordinatorId)) {
+                teacherMap.set(coordinatorId, {
+                    _id: classInfo.coordinatorId._id,
+                    fullName: classInfo.coordinatorId.fullName || `${classInfo.coordinatorId.firstName || ''} ${classInfo.coordinatorId.lastName || ''}`.trim(),
+                    firstName: classInfo.coordinatorId.firstName,
+                    lastName: classInfo.coordinatorId.lastName,
+                    email: classInfo.coordinatorId.email || null,
+                    phone: classInfo.coordinatorId.phone || null,
+                    gender: classInfo.coordinatorId.gender || null,
+                    roles: classInfo.coordinatorId.roles || [classInfo.coordinatorId.role],
+                    subjects: new Set()
+                });
+            }
+        }
+
+        // Convert to array and format
+        const teachers = Array.from(teacherMap.values()).map(t => ({
+            ...t,
+            subjects: Array.from(t.subjects),
+            isClassCoordinator: coordinatorId === t._id.toString()
+        }));
+
+        // Sort: class coordinator first, then alphabetically
+        teachers.sort((a, b) => {
+            if (a.isClassCoordinator && !b.isClassCoordinator) return -1;
+            if (!a.isClassCoordinator && b.isClassCoordinator) return 1;
+            return (a.fullName || '').localeCompare(b.fullName || '');
+        });
+
+        res.json({ teachers });
+
+    } catch (error) {
+        console.error('Teacher contacts error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/student/teacher-contacts/:teacherId
+// @desc    Get detailed info for a specific teacher
+router.get('/teacher-contacts/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        let classId = req.studentClassId;
+
+        // For parent, fetch student's classId
+        if (req.isParent) {
+            const student = await User.findById(req.studentId);
+            if (!student) {
+                return res.status(404).json({ message: 'Linked student not found' });
+            }
+            classId = student.classId;
+        }
+
+        if (!classId) {
+            return res.status(400).json({ message: 'Student is not assigned to a class' });
+        }
+
+        // Fetch teacher info
+        const teacher = await User.findById(teacherId)
+            .populate('departmentId', 'name code')
+            .select('-password');
+
+        if (!teacher) {
+            return res.status(404).json({ message: 'Teacher not found' });
+        }
+
+        // Find subjects this teacher teaches in the student's class
+        const timetableEntries = await Timetable.find({ classId, teacherId })
+            .populate('timeSlotId');
+
+        const subjects = [...new Set(
+            timetableEntries
+                .filter(e => e.subject && e.subject !== 'No Lecture')
+                .map(e => e.subject)
+        )];
+
+        // Get schedule breakdown
+        const schedule = timetableEntries
+            .filter(e => e.subject && e.subject !== 'No Lecture')
+            .map(e => ({
+                day: e.day,
+                subject: e.subject,
+                type: e.type,
+                time: e.timeSlotId ? `${e.timeSlotId.startTime} - ${e.timeSlotId.endTime}` : null
+            }));
+
+        // Check if this teacher is the class coordinator
+        const classInfo = await Class.findById(classId);
+        const isClassCoordinator = classInfo?.coordinatorId?.toString() === teacherId;
+
+        res.json({
+            teacher: {
+                _id: teacher._id,
+                fullName: teacher.fullName || `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim(),
+                firstName: teacher.firstName,
+                lastName: teacher.lastName,
+                email: teacher.email || null,
+                phone: teacher.phone || null,
+                gender: teacher.gender || null,
+                about: teacher.about || null,
+                roles: teacher.roles || [teacher.role],
+                department: teacher.departmentId?.name || null,
+                departmentCode: teacher.departmentId?.code || null,
+                subjects,
+                schedule,
+                isClassCoordinator
+            }
+        });
+
+    } catch (error) {
+        console.error('Teacher contact detail error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/student/all-teachers
+// @desc    Get all teachers in the college with pagination & filters
+router.get('/all-teachers', async (req, res) => {
+    try {
+        const { page = 1, limit = 12, search = '', department = '', role = '' } = req.query;
+        const pageNum = Math.max(1, parseInt(page));
+        const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
+
+        // Build query for teachers (any user with teacher/hod/classcoordinator role)
+        const teacherRoles = ['teacher', 'hod', 'classcoordinator'];
+        const query = {
+            roles: { $in: teacherRoles },
+            isActive: { $ne: false }
+        };
+
+        // Search filter
+        if (search) {
+            const searchRegex = new RegExp(search, 'i');
+            query.$or = [
+                { fullName: searchRegex },
+                { firstName: searchRegex },
+                { lastName: searchRegex },
+                { email: searchRegex }
+            ];
+        }
+
+        // Department filter
+        if (department) {
+            query.departmentId = department;
+        }
+
+        // Role filter
+        if (role) {
+            query.roles = { $all: [role], $in: teacherRoles };
+        }
+
+        const total = await User.countDocuments(query);
+        const totalPages = Math.ceil(total / limitNum);
+
+        const teachers = await User.find(query)
+            .populate('departmentId', 'name code')
+            .select('fullName firstName lastName email phone roles role gender departmentId about')
+            .sort({ fullName: 1 })
+            .skip((pageNum - 1) * limitNum)
+            .limit(limitNum);
+
+        // Get all departments for the filter dropdown
+        const Department = require('../models/Department');
+        const departments = await Department.find().select('name code').sort({ name: 1 });
+
+        res.json({
+            teachers: teachers.map(t => ({
+                _id: t._id,
+                fullName: t.fullName || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
+                email: t.email || null,
+                phone: t.phone || null,
+                gender: t.gender || null,
+                roles: t.roles || [t.role],
+                department: t.departmentId?.name || null,
+                departmentCode: t.departmentId?.code || null,
+                departmentId: t.departmentId?._id || null,
+                about: t.about || null
+            })),
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                totalPages
+            },
+            departments
+        });
+
+    } catch (error) {
+        console.error('All teachers error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 module.exports = router;
