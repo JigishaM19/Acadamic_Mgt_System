@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
-import { FiPlus, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiFilter } from 'react-icons/fi';
 import { FaBook, FaFlask } from 'react-icons/fa';
 
 const HodLectures = () => {
@@ -10,6 +10,9 @@ const HodLectures = () => {
     const [teachers, setTeachers] = useState([]);
     const [classes, setClasses] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [yearFilter, setYearFilter] = useState('');
+    const [semFilter, setSemFilter] = useState('');
+    const [typeFilter, setTypeFilter] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingLecture, setEditingLecture] = useState(null);
     const [formData, setFormData] = useState({
@@ -140,6 +143,25 @@ const HodLectures = () => {
         return <div className="loading"><div className="spinner"></div></div>;
     }
 
+    // Get semester options for filter year
+    const getFilterSemesterOptions = (year) => {
+        if (!year) return [];
+        const yr = parseInt(year);
+        const sem1 = (yr - 1) * 2 + 1;
+        const sem2 = sem1 + 1;
+        return [
+            { value: sem1, label: `SEM-${sem1}` },
+            { value: sem2, label: `SEM-${sem2}` }
+        ];
+    };
+
+    const filteredLectures = lectures.filter(l => {
+        if (yearFilter && l.classId?.year !== parseInt(yearFilter)) return false;
+        if (semFilter && l.subjectId?.semester !== parseInt(semFilter)) return false;
+        if (typeFilter && l.type !== typeFilter) return false;
+        return true;
+    });
+
     return (
         <div>
             <div className="card">
@@ -150,10 +172,33 @@ const HodLectures = () => {
                     </button>
                 </div>
 
-                {lectures.length === 0 ? (
+                {/* Filters */}
+                <div className="filter-group" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '8px', display: 'flex', alignItems: 'center' }}>
+                    <FiFilter style={{ color: 'var(--gray-500)' }} />
+                    <select value={yearFilter} onChange={(e) => { setYearFilter(e.target.value); setSemFilter(''); }} style={{ minWidth: '120px' }}>
+                        <option value="">All Years</option>
+                        <option value="1">1st Year</option>
+                        <option value="2">2nd Year</option>
+                        <option value="3">3rd Year</option>
+                        <option value="4">4th Year</option>
+                    </select>
+                    <select value={semFilter} onChange={(e) => setSemFilter(e.target.value)} style={{ minWidth: '120px' }} disabled={!yearFilter}>
+                        <option value="">All Semesters</option>
+                        {getFilterSemesterOptions(yearFilter).map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ minWidth: '120px' }}>
+                        <option value="">All Types</option>
+                        <option value="lecture">Lecture</option>
+                        <option value="practical">Practical</option>
+                    </select>
+                </div>
+
+                {filteredLectures.length === 0 ? (
                     <div className="empty-state">
                         <div className="empty-icon"><FaBook size={48} /></div>
-                        <h3>No lectures created yet</h3>
+                        <h3>{lectures.length > 0 ? 'No lectures match the selected filters' : 'No lectures created yet'}</h3>
                         <p>Create lecture assignments by selecting subject, teacher, class, and type</p>
                     </div>
                 ) : (
@@ -172,7 +217,7 @@ const HodLectures = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {lectures.map((lecture) => (
+                                {filteredLectures.map((lecture) => (
                                     <tr key={lecture._id}>
                                         <td>
                                             <div>

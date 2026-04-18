@@ -11,6 +11,9 @@ const Lectures = () => {
     const [classes, setClasses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [deptFilter, setDeptFilter] = useState('');
+    const [yearFilter, setYearFilter] = useState('');
+    const [semFilter, setSemFilter] = useState('');
+    const [typeFilter, setTypeFilter] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [editingLecture, setEditingLecture] = useState(null);
 
@@ -72,8 +75,24 @@ const Lectures = () => {
     const filteredClasses = classes.filter(c => !formData.year || c.year === parseInt(formData.year));
 
     const filteredLectures = lectures.filter((l) => {
-        return !deptFilter || l.departmentId?._id === deptFilter;
+        if (deptFilter && l.departmentId?._id !== deptFilter) return false;
+        if (yearFilter && l.classId?.year !== parseInt(yearFilter)) return false;
+        if (semFilter && l.subjectId?.semester !== parseInt(semFilter)) return false;
+        if (typeFilter && l.type !== typeFilter) return false;
+        return true;
     });
+
+    // Get semester options for filter year
+    const getFilterSemesterOptions = (year) => {
+        if (!year) return [];
+        const yr = parseInt(year);
+        const sem1 = (yr - 1) * 2 + 1;
+        const sem2 = sem1 + 1;
+        return [
+            { value: sem1, label: `SEM-${sem1}` },
+            { value: sem2, label: `SEM-${sem2}` }
+        ];
+    };
 
     // When subject changes, auto-set the lecture type based on subject type
     const handleSubjectChange = (subjectId) => {
@@ -153,13 +172,31 @@ const Lectures = () => {
             <div className="card">
                 <div className="toolbar">
                     <h3><FiBookOpen style={{ marginRight: '6px' }} /> Lecture Assignments</h3>
-                    <div className="filter-group">
-                        <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
-                            <option value="">All Departments</option>
-                            {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
-                        </select>
-                        <button className="btn btn-primary" onClick={openAddModal}><FiPlus style={{ marginRight: '4px' }} /> Add Lecture</button>
-                    </div>
+                    <button className="btn btn-primary" onClick={openAddModal}><FiPlus style={{ marginRight: '4px' }} /> Add Lecture</button>
+                </div>
+                <div className="filter-group" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '8px', display: 'flex', alignItems: 'center' }}>
+                    <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ minWidth: '140px' }}>
+                        <option value="">All Departments</option>
+                        {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
+                    </select>
+                    <select value={yearFilter} onChange={(e) => { setYearFilter(e.target.value); setSemFilter(''); }} style={{ minWidth: '120px' }}>
+                        <option value="">All Years</option>
+                        <option value="1">1st Year</option>
+                        <option value="2">2nd Year</option>
+                        <option value="3">3rd Year</option>
+                        <option value="4">4th Year</option>
+                    </select>
+                    <select value={semFilter} onChange={(e) => setSemFilter(e.target.value)} style={{ minWidth: '120px' }} disabled={!yearFilter}>
+                        <option value="">All Semesters</option>
+                        {getFilterSemesterOptions(yearFilter).map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ minWidth: '120px' }}>
+                        <option value="">All Types</option>
+                        <option value="lecture">Lecture</option>
+                        <option value="practical">Practical</option>
+                    </select>
                 </div>
 
                 <div className="table-container">

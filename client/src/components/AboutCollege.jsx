@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { FiInfo, FiMapPin, FiPhone, FiDollarSign, FiHome, FiMail, FiGlobe } from 'react-icons/fi';
+import { FiInfo, FiMapPin, FiPhone, FiGlobe } from 'react-icons/fi';
 import '../styles/CollegeDetail.css';
 
 const AboutCollege = () => {
@@ -80,35 +80,6 @@ const AboutCollege = () => {
 
                 {/* Two-column layout for smaller sections */}
                 <div className="about-college-grid-2col">
-                    {/* Fee Structure */}
-                    {details.feesStructure && (
-                        <div className="about-college-card">
-                            <div className="about-college-card-header">
-                                <div className="about-college-card-icon fee-icon">
-                                    <FiDollarSign size={18} />
-                                </div>
-                                <h3>Fee Structure</h3>
-                            </div>
-                            <div className="about-college-card-body">
-                                <pre className="about-college-text">{details.feesStructure}</pre>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Hostel Details */}
-                    {details.hostelAvailable && details.hostelDetails && (
-                        <div className="about-college-card">
-                            <div className="about-college-card-header">
-                                <div className="about-college-card-icon hostel-icon">
-                                    <FiHome size={18} />
-                                </div>
-                                <h3>Hostel Information</h3>
-                            </div>
-                            <div className="about-college-card-body">
-                                <pre className="about-college-text">{details.hostelDetails}</pre>
-                            </div>
-                        </div>
-                    )}
 
                     {/* Contact Numbers */}
                     {details.contactNumbers && details.contactNumbers.length > 0 && (

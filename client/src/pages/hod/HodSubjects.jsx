@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { FiEdit2, FiTrash2, FiPlus, FiBookOpen, FiFolder, FiCheckCircle } from 'react-icons/fi';
+import { FiEdit2, FiTrash2, FiPlus, FiBookOpen, FiFolder, FiCheckCircle, FiFilter } from 'react-icons/fi';
 import Modal from '../../components/Modal';
 import Pagination, { usePagination } from '../../components/Pagination';
 
@@ -13,6 +13,9 @@ const HodSubjects = () => {
     const [bulkFile, setBulkFile] = useState(null);
     const [bulkResult, setBulkResult] = useState(null);
     const [uploading, setUploading] = useState(false);
+    const [filterYear, setFilterYear] = useState('');
+    const [filterSemester, setFilterSemester] = useState('');
+    const [filterType, setFilterType] = useState('');
     const { currentPage, pageSize, handlePageChange, handlePageSizeChange, paginateData } = usePagination(30);
     const [formData, setFormData] = useState({
         name: '',
@@ -144,6 +147,24 @@ const HodSubjects = () => {
         return <div className="loading"><div className="spinner"></div></div>;
     }
 
+    const filteredSubjects = subjects.filter(s => {
+        if (filterYear && s.year !== parseInt(filterYear)) return false;
+        if (filterSemester && s.semester !== parseInt(filterSemester)) return false;
+        if (filterType && s.type !== filterType) return false;
+        return true;
+    });
+
+    const getFilterSemesterOptions = (year) => {
+        if (!year) return [];
+        const yr = parseInt(year);
+        const sem1 = (yr - 1) * 2 + 1;
+        const sem2 = sem1 + 1;
+        return [
+            { value: sem1, label: `SEM-${sem1}` },
+            { value: sem2, label: `SEM-${sem2}` }
+        ];
+    };
+
     return (
         <div>
             <div className="card">
@@ -161,9 +182,35 @@ const HodSubjects = () => {
                     </div>
                 </div>
 
+                {/* Filters */}
+                <div className="toolbar" style={{ marginBottom: '0', paddingBottom: '12px', borderBottom: '1px solid var(--gray-200)' }}>
+                    <div className="filter-group" style={{ flexWrap: 'wrap' }}>
+                        <FiFilter style={{ color: 'var(--gray-500)' }} />
+                        <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterSemester(''); }} style={{ minWidth: '120px' }}>
+                            <option value="">All Years</option>
+                            <option value="1">1st Year</option>
+                            <option value="2">2nd Year</option>
+                            <option value="3">3rd Year</option>
+                            <option value="4">4th Year</option>
+                        </select>
+                        <select value={filterSemester} onChange={(e) => setFilterSemester(e.target.value)} style={{ minWidth: '120px' }} disabled={!filterYear}>
+                            <option value="">All Semesters</option>
+                            {getFilterSemesterOptions(filterYear).map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                        <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ minWidth: '120px' }}>
+                            <option value="">All Types</option>
+                            <option value="theory">Theory</option>
+                            <option value="practical">Practical</option>
+                            <option value="both">Both</option>
+                        </select>
+                    </div>
+                </div>
+
                 <Pagination
                     currentPage={currentPage}
-                    totalItems={subjects.length}
+                    totalItems={filteredSubjects.length}
                     pageSize={pageSize}
                     onPageChange={handlePageChange}
                     onPageSizeChange={handlePageSizeChange}
@@ -183,16 +230,16 @@ const HodSubjects = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {subjects.length === 0 ? (
+                                {filteredSubjects.length === 0 ? (
                                     <tr>
                                         <td colSpan="8" className="empty-state">
                                             <div className="empty-icon"><FiBookOpen size={48} /></div>
                                             <h3>No subjects found</h3>
-                                            <p>Add subjects for your department to get started</p>
+                                            <p>{subjects.length > 0 ? 'No subjects match the selected filters' : 'Add subjects for your department to get started'}</p>
                                         </td>
                                     </tr>
                                 ) : (
-                                    paginateData(subjects).map((subject) => (
+                                    paginateData(filteredSubjects).map((subject) => (
                                         <tr key={subject._id}>
                                             <td><strong>{subject.name}</strong></td>
                                             <td>

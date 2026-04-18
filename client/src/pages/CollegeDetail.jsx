@@ -251,54 +251,8 @@ const CollegeDetail = () => {
                 </div>
             </div>
 
-            <div className="card" style={{ marginTop: '20px' }}>
-                <div className="card-header">
-                    <h2 className="card-title">Fee Structure</h2>
-                </div>
-                <div className="card-body">
-                    <div className="form-group">
-                        <label className="form-label">Fees Structure Details</label>
-                        <textarea
-                            className="form-input"
-                            rows="5"
-                            value={details.feesStructure}
-                            onChange={(e) => setDetails({ ...details, feesStructure: e.target.value })}
-                            placeholder="Enter fee structure details..."
-                        />
-                    </div>
-                </div>
-            </div>
 
-            <div className="card" style={{ marginTop: '20px' }}>
-                <div className="card-header">
-                    <h2 className="card-title">Hostel Information</h2>
-                </div>
-                <div className="card-body">
-                    <div className="form-group">
-                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <input
-                                type="checkbox"
-                                checked={details.hostelAvailable}
-                                onChange={(e) => setDetails({ ...details, hostelAvailable: e.target.checked })}
-                                style={{ width: 'auto' }}
-                            />
-                            Hostel Available
-                        </label>
-                    </div>
-                    {details.hostelAvailable && (
-                        <div className="form-group">
-                            <label className="form-label">Hostel Details</label>
-                            <textarea
-                                className="form-input"
-                                rows="4"
-                                value={details.hostelDetails}
-                                onChange={(e) => setDetails({ ...details, hostelDetails: e.target.value })}
-                                placeholder="Enter hostel details (capacity, fees, facilities, etc.)"
-                            />
-                        </div>
-                    )}
-                </div>
-            </div>
+
 
             <div className="card" style={{ marginTop: '20px' }}>
                 <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

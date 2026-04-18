@@ -398,7 +398,7 @@ const TeacherAssignmentSheet = () => {
                     No {label.toLowerCase()}s configured yet. Click <strong>Configure</strong> to set the total count.
                 </div>
             ) : (
-                <div className="table-container" style={{ overflowX: 'auto' }}>
+                <div className="table-container" key={activeTab} style={{ overflowX: 'auto' }}>
                     <table className="data-table">
                         <thead>
                             <tr>

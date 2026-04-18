@@ -334,7 +334,7 @@ const CCAssignmentSheet = () => {
                     No {label.toLowerCase()}s configured. Click <strong>Configure</strong> to set the total.
                 </div>
             ) : (
-                <div className="table-container" style={{ overflowX: 'auto' }}>
+                <div className="table-container" key={activeTab} style={{ overflowX: 'auto' }}>
                     <table className="data-table">
                         <thead>
                             <tr>
