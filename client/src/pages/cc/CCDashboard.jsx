@@ -76,10 +76,10 @@ const CCDashboard = () => {
                     </div>
                 </div>
                 <div className="stat-card">
-                    <div className="stat-icon" style={{ background: getStatusColor(stats?.overallTestPerformance || 0) }}><FiFileText size={24} /></div>
+                    <div className="stat-icon" style={{ background: getStatusColor(stats?.overallIAPerformance || 0) }}><FiFileText size={24} /></div>
                     <div className="stat-info">
-                        <h3>{stats?.overallTestPerformance || 0}%</h3>
-                        <p>Test Performance</p>
+                        <h3>{stats?.overallIAPerformance || 0}%</h3>
+                        <p>IA Performance</p>
                     </div>
                 </div>
                 <div className="stat-card">
@@ -111,8 +111,8 @@ const CCDashboard = () => {
                                     <span className="stat-label">Attendance</span>
                                 </div>
                                 <div className="year-stat">
-                                    <span className="stat-value">{subject.avgTestScore}%</span>
-                                    <span className="stat-label">Avg Score</span>
+                                    <span className="stat-value">{subject.avgIAScore}%</span>
+                                    <span className="stat-label">IA Avg</span>
                                 </div>
                             </div>
                             <div className="year-stats" style={{ marginTop: '8px' }}>

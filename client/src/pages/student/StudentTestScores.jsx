@@ -10,13 +10,11 @@ const StudentTestScores = () => {
     const [expandedSubject, setExpandedSubject] = useState(null);
 
     const isParent = user?.role === 'parent';
-    const basePath = isParent ? '/parent' : '/student';
 
     useEffect(() => {
         const fetchMarks = async () => {
             try {
-                const endpoint = isParent ? '/student/marks-summary' : '/student/marks-summary';
-                const res = await api.get(endpoint);
+                const res = await api.get('/student/marks-summary');
                 setMarksSummary(res.data.marksSummary || []);
             } catch (err) {
                 console.error('Failed to fetch marks:', err);
@@ -47,10 +45,10 @@ const StudentTestScores = () => {
                 <div>
                     <h2 style={{ margin: 0 }}>
                         <FiAward style={{ marginRight: '8px', verticalAlign: 'middle', color: 'var(--primary)' }} />
-                        Marks & Results
+                        IA Marks & Results
                     </h2>
                     <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                        Subject-wise marks breakdown with grades
+                        Subject-wise IA marks breakdown with grades
                     </p>
                 </div>
             </div>
@@ -84,7 +82,7 @@ const StudentTestScores = () => {
                                         <div>
                                             <h4 style={{ margin: 0, fontSize: '15px' }}>{ms.subject}</h4>
                                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                                Total: <strong style={{ color: 'var(--primary)' }}>{ms.total ?? '—'}/150</strong>
+                                                Final IA: <strong style={{ color: 'var(--primary)' }}>{ms.finalIA ?? '—'}/20</strong>
                                                 &nbsp;&nbsp;•&nbsp;&nbsp;
                                                 {ms.percentage !== null ? `${ms.percentage}%` : '—'}
                                             </div>
@@ -108,7 +106,7 @@ const StudentTestScores = () => {
                                         padding: '0 20px 20px',
                                         borderTop: '1px solid var(--border)'
                                     }}>
-                                        {/* 5 Test Type Marks */}
+                                        {/* IA Marks */}
                                         <div style={{
                                             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
                                             gap: '10px', marginTop: '16px'
@@ -116,10 +114,7 @@ const StudentTestScores = () => {
                                             {[
                                                 { label: 'IA1', value: ms.ia1, max: 20 },
                                                 { label: 'IA2', value: ms.ia2, max: 20 },
-                                                { label: 'Final IA', value: ms.finalIA, max: 20, highlight: true },
-                                                { label: 'Term Work', value: ms.tw, max: 25 },
-                                                { label: 'Oral Exam', value: ms.oralExam, max: 25 },
-                                                { label: 'ESE', value: ms.ese, max: 80 }
+                                                { label: 'Final IA', value: ms.finalIA, max: 20, highlight: true }
                                             ].map((item) => (
                                                 <div key={item.label} style={{
                                                     padding: '12px', borderRadius: '10px', textAlign: 'center',
@@ -137,35 +132,7 @@ const StudentTestScores = () => {
                                             ))}
                                         </div>
 
-                                        {/* TW Breakdown */}
-                                        {ms.twBreakdown && (
-                                            <div style={{ marginTop: '14px' }}>
-                                                <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>
-                                                    Term Work Breakdown
-                                                </div>
-                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
-                                                    {[
-                                                        { label: 'Journal/Experiments', value: ms.twBreakdown.journal, max: 10 },
-                                                        { label: 'Assignments', value: ms.twBreakdown.assignments, max: 5 },
-                                                        { label: 'Lab Attendance', value: ms.twBreakdown.labAttendance, max: 5 },
-                                                        { label: 'Internal Viva', value: ms.twBreakdown.internalViva, max: 5 }
-                                                    ].map((c) => (
-                                                        <div key={c.label} style={{
-                                                            padding: '8px 10px', borderRadius: '8px',
-                                                            background: 'var(--bg-secondary)', fontSize: '12px',
-                                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                                                        }}>
-                                                            <span style={{ color: 'var(--text-secondary)' }}>{c.label}</span>
-                                                            <span style={{ fontWeight: 600 }}>
-                                                                {c.value !== null && c.value !== undefined ? c.value : '—'}/{c.max}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Grade + Passing Info */}
+                                        {/* Grade + Attendance Info */}
                                         <div style={{
                                             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
                                             gap: '10px', marginTop: '14px'
@@ -210,31 +177,52 @@ const StudentTestScores = () => {
                                             </div>
                                         </div>
 
-                                        {/* Passing Conditions */}
-                                        {ms.passing && (
-                                            <div style={{
-                                                marginTop: '14px', padding: '12px 14px',
-                                                borderRadius: '10px', background: 'var(--bg-secondary)',
-                                                border: '1px solid var(--border)', fontSize: '12px'
-                                            }}>
-                                                <div style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>Passing Conditions</div>
-                                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                                                    {[
-                                                        { label: 'ESE ≥ 32', passed: ms.passing.esePassed },
-                                                        { label: 'TW ≥ 10', passed: ms.passing.twPassed },
-                                                        { label: 'Total ≥ 60', passed: ms.passing.totalPassed }
-                                                    ].map((c) => (
-                                                        <span key={c.label} style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                            color: c.passed ? '#10b981' : '#ef4444', fontWeight: 500
-                                                        }}>
-                                                            {c.passed ? <FiCheckCircle size={13} /> : <FiAlertTriangle size={13} />}
-                                                            {c.label}
-                                                        </span>
-                                                    ))}
-                                                </div>
+                                        {/* Passing Info */}
+                                        <div style={{
+                                            marginTop: '14px', padding: '12px 14px',
+                                            borderRadius: '10px', background: 'var(--bg-secondary)',
+                                            border: '1px solid var(--border)', fontSize: '12px'
+                                        }}>
+                                            <div style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>Status Info</div>
+                                            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                                                {ms.status === 'DETAINED' && (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        color: '#f59e0b', fontWeight: 500
+                                                    }}>
+                                                        <FiAlertTriangle size={13} />
+                                                        Attendance below 75% — Detained
+                                                    </span>
+                                                )}
+                                                {ms.status === 'PASS' && (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        color: '#10b981', fontWeight: 500
+                                                    }}>
+                                                        <FiCheckCircle size={13} />
+                                                        IA Passed (≥ 40%)
+                                                    </span>
+                                                )}
+                                                {ms.status === 'FAIL' && (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        color: '#ef4444', fontWeight: 500
+                                                    }}>
+                                                        <FiAlertTriangle size={13} />
+                                                        IA Failed (&lt; 40%)
+                                                    </span>
+                                                )}
+                                                {ms.status === 'INCOMPLETE' && (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        color: '#6b7280', fontWeight: 500
+                                                    }}>
+                                                        <FiClock size={13} />
+                                                        IA marks not fully entered yet
+                                                    </span>
+                                                )}
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
                                 )}
                             </div>

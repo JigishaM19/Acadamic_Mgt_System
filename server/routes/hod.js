@@ -184,20 +184,17 @@ router.get('/stats', async (req, res) => {
 // ============================================
 
 // @route   GET /api/hod/attendance
-// @desc    Get attendance data for department classes
+// @desc    Get attendance data for department classes (basic)
 router.get('/attendance', async (req, res) => {
     try {
         const { year, classId } = req.query;
         const departmentId = req.departmentId;
 
-        // Get department classes
         const classFilter = { departmentId };
         if (year) classFilter.year = parseInt(year);
 
         const classes = await Class.find(classFilter);
-        const classIds = classId ? [classId] : classes.map(c => c._id);
 
-        // Get attendance summary for each class
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -244,6 +241,216 @@ router.get('/attendance', async (req, res) => {
         res.json(attendanceStats);
     } catch (error) {
         console.error('HOD attendance error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// @route   GET /api/hod/attendance/analytics
+// @desc    Get rich attendance analytics for HOD dashboard
+router.get('/attendance/analytics', async (req, res) => {
+    try {
+        const { year, classId } = req.query;
+        const departmentId = req.departmentId;
+
+        const classFilter = { departmentId };
+        if (year) classFilter.year = parseInt(year);
+
+        const classes = await Class.find(classFilter);
+        const settings = await AcademicSettings.getSettings();
+        const minAttendance = settings.minAttendancePercent || 75;
+
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        // ---- Department-wide summary ----
+        let deptTotalPresent = 0, deptTotalRecords = 0, deptTotalStudents = 0;
+        let deptTotalLectures = 0;
+
+        // ---- Per-class analytics ----
+        const classAnalytics = [];
+
+        // ---- Student distribution buckets (department-wide) ----
+        const distBuckets = { above90: 0, above75: 0, above60: 0, below60: 0 };
+
+        // ---- Weekly trend (last 4 weeks) ----
+        const weeklyTrend = [];
+        for (let w = 3; w >= 0; w--) {
+            const weekEnd = new Date();
+            weekEnd.setDate(weekEnd.getDate() - (w * 7));
+            const weekStart = new Date(weekEnd);
+            weekStart.setDate(weekStart.getDate() - 7);
+            weeklyTrend.push({
+                weekLabel: w === 0 ? 'This Week' : w === 1 ? 'Last Week' : `${w + 1} Weeks Ago`,
+                startDate: weekStart,
+                endDate: weekEnd,
+                present: 0,
+                total: 0,
+                percentage: 0
+            });
+        }
+
+        // ---- Subject-wise department stats ----
+        const subjectStatsMap = {};
+
+        // ---- Top & bottom performing students ----
+        const allStudentPerformance = [];
+
+        for (const cls of classes) {
+            if (classId && cls._id.toString() !== classId) continue;
+
+            const students = await User.find({ role: 'student', classId: cls._id })
+                .select('fullName username rollNo');
+
+            const allAttendance = await Attendance.find({ classId: cls._id });
+            const recentAttendance = allAttendance.filter(a => a.date >= thirtyDaysAgo);
+
+            // Class-level totals (recent 30 days)
+            let classTotalPresent = 0, classTotalRecords = 0;
+            recentAttendance.forEach(a => {
+                classTotalPresent += a.presentCount;
+                classTotalRecords += a.totalCount;
+            });
+
+            const classAvg = classTotalRecords > 0
+                ? Math.round((classTotalPresent / classTotalRecords) * 100)
+                : 0;
+
+            // Subject-wise breakdown for this class
+            const classSubjects = [...new Set(allAttendance.map(a => a.subject).filter(Boolean))];
+            const subjectBreakdown = [];
+
+            for (const subj of classSubjects) {
+                const subjRecords = recentAttendance.filter(r => r.subject === subj);
+                let sPresent = 0, sTotal = 0;
+                subjRecords.forEach(r => { sPresent += r.presentCount; sTotal += r.totalCount; });
+                const subjAvg = sTotal > 0 ? Math.round((sPresent / sTotal) * 100) : 0;
+                const lectureCount = subjRecords.length;
+
+                subjectBreakdown.push({
+                    subject: subj,
+                    avgAttendance: subjAvg,
+                    lectureCount,
+                    status: subjAvg >= 75 ? 'good' : subjAvg >= 60 ? 'warning' : 'critical'
+                });
+
+                // Accumulate department subject stats
+                if (!subjectStatsMap[subj]) {
+                    subjectStatsMap[subj] = { subject: subj, present: 0, total: 0, lectureCount: 0 };
+                }
+                subjectStatsMap[subj].present += sPresent;
+                subjectStatsMap[subj].total += sTotal;
+                subjectStatsMap[subj].lectureCount += lectureCount;
+            }
+
+            // Per-student attendance for this class
+            for (const student of students) {
+                const sid = student._id.toString();
+                let sPresent = 0, sTotal = 0;
+
+                for (const record of allAttendance) {
+                    const sr = record.records.find(r => r.studentId.toString() === sid);
+                    if (sr) {
+                        sTotal++;
+                        if (sr.status === 'present') sPresent++;
+                    }
+                }
+
+                const pct = sTotal > 0 ? Math.round((sPresent / sTotal) * 100) : 0;
+
+                // Distribution buckets
+                if (pct >= 90) distBuckets.above90++;
+                else if (pct >= 75) distBuckets.above75++;
+                else if (pct >= 60) distBuckets.above60++;
+                else distBuckets.below60++;
+
+                allStudentPerformance.push({
+                    studentId: student._id,
+                    fullName: student.fullName,
+                    rollNo: student.rollNo,
+                    username: student.username,
+                    className: cls.name,
+                    year: cls.year,
+                    attendancePercent: pct,
+                    totalLectures: sTotal,
+                    attended: sPresent
+                });
+            }
+
+            // Weekly trend accumulation
+            for (const trend of weeklyTrend) {
+                const weekRecords = allAttendance.filter(a =>
+                    a.date >= trend.startDate && a.date < trend.endDate
+                );
+                weekRecords.forEach(r => {
+                    trend.present += r.presentCount;
+                    trend.total += r.totalCount;
+                });
+            }
+
+            deptTotalPresent += classTotalPresent;
+            deptTotalRecords += classTotalRecords;
+            deptTotalStudents += students.length;
+            deptTotalLectures += recentAttendance.length;
+
+            let classStatus = 'good';
+            if (classAvg < 60) classStatus = 'critical';
+            else if (classAvg < 75) classStatus = 'warning';
+
+            classAnalytics.push({
+                classId: cls._id,
+                className: cls.name,
+                year: cls.year,
+                totalStudents: students.length,
+                avgAttendance: classAvg,
+                totalLectures: recentAttendance.length,
+                status: classStatus,
+                subjectBreakdown: subjectBreakdown.sort((a, b) => a.avgAttendance - b.avgAttendance)
+            });
+        }
+
+        // Finalize weekly trend percentages
+        weeklyTrend.forEach(w => {
+            w.percentage = w.total > 0 ? Math.round((w.present / w.total) * 100) : 0;
+            delete w.startDate;
+            delete w.endDate;
+            delete w.present;
+            delete w.total;
+        });
+
+        // Finalize subject stats
+        const subjectStats = Object.values(subjectStatsMap).map(s => ({
+            subject: s.subject,
+            avgAttendance: s.total > 0 ? Math.round((s.present / s.total) * 100) : 0,
+            lectureCount: s.lectureCount
+        })).sort((a, b) => a.avgAttendance - b.avgAttendance);
+
+        // Sort students by attendance
+        allStudentPerformance.sort((a, b) => a.attendancePercent - b.attendancePercent);
+
+        const deptAvg = deptTotalRecords > 0
+            ? Math.round((deptTotalPresent / deptTotalRecords) * 100)
+            : 0;
+
+        const atRiskCount = allStudentPerformance.filter(s => s.attendancePercent < minAttendance).length;
+
+        res.json({
+            summary: {
+                deptAvgAttendance: deptAvg,
+                totalStudents: deptTotalStudents,
+                totalClasses: classAnalytics.length,
+                totalLectures: deptTotalLectures,
+                atRiskCount,
+                minAttendanceThreshold: minAttendance
+            },
+            classAnalytics: classAnalytics.sort((a, b) => a.avgAttendance - b.avgAttendance),
+            distribution: distBuckets,
+            weeklyTrend,
+            subjectStats,
+            bottomStudents: allStudentPerformance.slice(0, 10),
+            topStudents: allStudentPerformance.slice(-5).reverse()
+        });
+    } catch (error) {
+        console.error('HOD attendance analytics error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });

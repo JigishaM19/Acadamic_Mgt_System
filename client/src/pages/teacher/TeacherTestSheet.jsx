@@ -231,8 +231,8 @@ const TeacherTestSheet = () => {
                 background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.12)',
                 borderRadius: '10px', fontSize: '12px', color: 'var(--text-secondary)'
             }}>
-                <strong>Fixed Test Types:</strong> IA1 (/20) • IA2 (/20) • ESE (/80) • Oral (/25) — 
-                Term Work (/25) is auto-calculated from the Assignments section.
+                <strong>Test Types:</strong> IA1 (/20) • IA2 (/20) — 
+                Assignments & Experiments are managed separately in the Assignments section.
             </div>
 
             {/* Marks Entry Table */}
@@ -248,10 +248,6 @@ const TeacherTestSheet = () => {
                                     <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 400 }}>/{tt.maxScore}</div>
                                 </th>
                             ))}
-                            <th style={{ textAlign: 'center', minWidth: '90px', background: 'rgba(99,102,241,0.05)' }}>
-                                Term Work
-                                <div style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 400 }}>/25 (Auto)</div>
-                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -279,15 +275,6 @@ const TeacherTestSheet = () => {
                                         />
                                     </td>
                                 ))}
-                                <td style={{
-                                    textAlign: 'center', fontSize: '13px', fontWeight: 600,
-                                    color: 'var(--primary)', background: 'rgba(99,102,241,0.03)'
-                                }}>
-                                    —
-                                    <div style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-secondary)' }}>
-                                        See Assignments
-                                    </div>
-                                </td>
                             </tr>
                         ))}
                     </tbody>
@@ -338,7 +325,7 @@ const TeacherTestSheet = () => {
                             borderRadius: '12px', padding: '16px', marginBottom: '20px'
                         }}>
                             <p style={{ margin: '0 0 10px', fontSize: '13px', color: 'var(--gray-500)' }}>
-                                Download the template first, fill in scores (IA1, IA2, ESE, Oral), then upload.
+                                Download the template first, fill in scores (IA1, IA2), then upload.
                             </p>
                             <button className="btn btn-outline btn-sm" onClick={handleDownloadTemplate} style={{ width: '100%' }}>
                                 <FiDownload style={{ marginRight: '6px' }} /> Download Test Marks Template
@@ -404,12 +391,12 @@ const TeacherTestSheet = () => {
                     <div style={{
                         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
                         background: 'var(--white, #ffffff)', borderRadius: '16px', padding: '28px',
-                        width: '95%', maxWidth: '900px', maxHeight: '85vh', overflowY: 'auto',
+                        width: '95%', maxWidth: '750px', maxHeight: '85vh', overflowY: 'auto',
                         zIndex: 9999, boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <FiAward style={{ color: 'var(--primary)' }} /> Marks Summary — {decodedSubject}
+                                <FiAward style={{ color: 'var(--primary)' }} /> IA Summary — {decodedSubject}
                             </h3>
                             <button onClick={() => setShowSummary(false)}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px' }}>
@@ -432,10 +419,6 @@ const TeacherTestSheet = () => {
                                             <th style={{ textAlign: 'center' }}>IA1<br/><small>/20</small></th>
                                             <th style={{ textAlign: 'center' }}>IA2<br/><small>/20</small></th>
                                             <th style={{ textAlign: 'center' }}>Final IA<br/><small>/20</small></th>
-                                            <th style={{ textAlign: 'center' }}>TW<br/><small>/25</small></th>
-                                            <th style={{ textAlign: 'center' }}>Oral<br/><small>/25</small></th>
-                                            <th style={{ textAlign: 'center' }}>ESE<br/><small>/80</small></th>
-                                            <th style={{ textAlign: 'center' }}>Total<br/><small>/150</small></th>
                                             <th style={{ textAlign: 'center' }}>%</th>
                                             <th style={{ textAlign: 'center' }}>Grade</th>
                                             <th style={{ textAlign: 'center' }}>Att%</th>
@@ -450,10 +433,6 @@ const TeacherTestSheet = () => {
                                                 <td style={{ textAlign: 'center' }}>{ms.ia1 ?? '—'}</td>
                                                 <td style={{ textAlign: 'center' }}>{ms.ia2 ?? '—'}</td>
                                                 <td style={{ textAlign: 'center', fontWeight: 600 }}>{ms.finalIA ?? '—'}</td>
-                                                <td style={{ textAlign: 'center' }}>{ms.tw ?? '—'}</td>
-                                                <td style={{ textAlign: 'center' }}>{ms.oralExam ?? '—'}</td>
-                                                <td style={{ textAlign: 'center' }}>{ms.ese ?? '—'}</td>
-                                                <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--primary)' }}>{ms.total ?? '—'}</td>
                                                 <td style={{ textAlign: 'center' }}>{ms.percentage !== null ? `${ms.percentage}%` : '—'}</td>
                                                 <td style={{ textAlign: 'center' }}>
                                                     {ms.grade ? (

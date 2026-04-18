@@ -399,11 +399,9 @@ const StudentDashboard = () => {
                             <thead>
                                 <tr>
                                     <th>Subject</th>
+                                    <th style={{ textAlign: 'center' }}>IA1<br/><small>/20</small></th>
+                                    <th style={{ textAlign: 'center' }}>IA2<br/><small>/20</small></th>
                                     <th style={{ textAlign: 'center' }}>Final IA<br/><small>/20</small></th>
-                                    <th style={{ textAlign: 'center' }}>TW<br/><small>/25</small></th>
-                                    <th style={{ textAlign: 'center' }}>Oral<br/><small>/25</small></th>
-                                    <th style={{ textAlign: 'center' }}>ESE<br/><small>/80</small></th>
-                                    <th style={{ textAlign: 'center' }}>Total<br/><small>/150</small></th>
                                     <th style={{ textAlign: 'center' }}>%</th>
                                     <th style={{ textAlign: 'center' }}>Grade</th>
                                     <th style={{ textAlign: 'center' }}>Att. Marks</th>
@@ -414,12 +412,10 @@ const StudentDashboard = () => {
                                 {stats.marksStats.map((ms, index) => (
                                     <tr key={index}>
                                         <td style={{ fontWeight: '500' }}>{ms.subject}</td>
-                                        <td style={{ textAlign: 'center' }}>{ms.finalIA ?? '—'}</td>
-                                        <td style={{ textAlign: 'center' }}>{ms.tw ?? '—'}</td>
-                                        <td style={{ textAlign: 'center' }}>{ms.oralExam ?? '—'}</td>
-                                        <td style={{ textAlign: 'center' }}>{ms.ese ?? '—'}</td>
+                                        <td style={{ textAlign: 'center' }}>{ms.ia1 ?? '—'}</td>
+                                        <td style={{ textAlign: 'center' }}>{ms.ia2 ?? '—'}</td>
                                         <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--primary)' }}>
-                                            {ms.total ?? '—'}
+                                            {ms.finalIA ?? '—'}
                                         </td>
                                         <td style={{ textAlign: 'center' }}>
                                             {ms.percentage !== null ? `${ms.percentage}%` : '—'}

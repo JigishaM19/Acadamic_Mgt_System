@@ -194,7 +194,7 @@ const TeacherDashboard = () => {
                                     </div>
                                     <div className="year-stat">
                                         <span className="stat-value">{cls.avgTestScore || 0}%</span>
-                                        <span className="stat-label">Avg Score</span>
+                                        <span className="stat-label">IA Avg</span>
                                     </div>
                                 </div>
                                 <div className="year-stats" style={{ marginTop: '8px' }}>

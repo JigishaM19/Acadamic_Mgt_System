@@ -77,10 +77,10 @@ router.get('/stats', async (req, res) => {
         });
         const overallAttendance = totalRecords > 0 ? Math.round((totalPresent / totalRecords) * 100) : 0;
 
-        // Get all tests for this class
-        const tests = await Test.find({ classId });
+        // Get all tests for this class (IA1, IA2 only)
+        const tests = await Test.find({ classId, testType: { $in: ['IA1', 'IA2'] } });
 
-        // Calculate overall test performance
+        // Calculate overall IA performance
         let totalScore = 0;
         let totalMaxScore = 0;
         tests.forEach(test => {
@@ -91,7 +91,7 @@ router.get('/stats', async (req, res) => {
                 }
             });
         });
-        const overallTestPerformance = totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0;
+        const overallIAPerformance = totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0;
 
         // Get subject-wise data
         const subjects = await Subject.find({
@@ -122,7 +122,7 @@ router.get('/stats', async (req, res) => {
             });
             const avgAttendance = subjTotal > 0 ? Math.round((subjPresent / subjTotal) * 100) : 0;
 
-            // Get tests for this subject
+            // Get IA tests for this subject
             const subjectTests = tests.filter(t => t.subject === subjectName);
             let subjScore = 0;
             let subjMaxScore = 0;
@@ -144,7 +144,7 @@ router.get('/stats', async (req, res) => {
             subjectStats.push({
                 subject: subjectName,
                 avgAttendance,
-                avgTestScore,
+                avgIAScore: avgTestScore,
                 totalLectures: subjectAttendance.length,
                 totalTests: subjectTests.length,
                 status
@@ -208,7 +208,7 @@ router.get('/stats', async (req, res) => {
             department: req.assignedClass.departmentId?.name || 'N/A',
             totalStudents,
             overallAttendance,
-            overallTestPerformance,
+            overallIAPerformance,
             subjectStats,
             pendingLeaves,
             openComplaints,

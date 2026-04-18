@@ -5,7 +5,7 @@ const Class = require('../models/Class');
 const Timetable = require('../models/Timetable');
 const Attendance = require('../models/Attendance');
 const Test = require('../models/Test');
-const { FIXED_TEST_TYPES, calcFinalScore, buildTWBreakdown } = require('../utils/markCalculationService');
+const { FIXED_TEST_TYPES, calcFinalScore } = require('../utils/markCalculationService');
 const TimeSlot = require('../models/TimeSlot');
 const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
@@ -121,7 +121,6 @@ router.get('/stats', async (req, res) => {
             });
         }
 
-        // Calculate marks per subject (new system)
         const marksStats = [];
         for (const subject of timetableEntries) {
             const tests = await Test.find({ classId, subject });
@@ -136,48 +135,13 @@ router.get('/stats', async (req, res) => {
 
             const ia1 = getTestScore('IA1');
             const ia2 = getTestScore('IA2');
-            const ese = getTestScore('ESE');
-            const oralExam = getTestScore('Oral Exam');
-
-            // Build TW from assignment/experiment data
-            const experimentRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
-            const assignmentRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
-            const labAttRecords = await AssignmentMark.find({ classId, subject, type: 'lab_attendance' });
-            const vivaRecords = await AssignmentMark.find({ classId, subject, type: 'internal_viva' });
-            const config = await SubjectConfig.findOne({ classId, subject });
-
-            const expScores = experimentRecords.map(em => {
-                const sm = em.marks.find(m => m.studentId.toString() === studentId.toString());
-                return sm?.score ?? null;
-            }).filter(s => s !== null);
-            const assignScores = assignmentRecords.map(am => {
-                const sm = am.marks.find(m => m.studentId.toString() === studentId.toString());
-                return sm?.score ?? null;
-            }).filter(s => s !== null);
-
-            let labAttScore = 0;
-            if (labAttRecords.length > 0) {
-                const sm = labAttRecords[0].marks.find(m => m.studentId.toString() === studentId.toString());
-                labAttScore = sm?.score ?? 0;
-            }
-            let vivaScore = 0;
-            if (vivaRecords.length > 0) {
-                const sm = vivaRecords[0].marks.find(m => m.studentId.toString() === studentId.toString());
-                vivaScore = sm?.score ?? 0;
-            }
-
-            const twData = buildTWBreakdown(
-                expScores, config?.experimentMaxScore || 10,
-                assignScores, config?.assignmentMaxScore || 10,
-                labAttScore, vivaScore
-            );
 
             // Get attendance for this subject
             const subjectAtt = attendanceStats.find(a => a.subject === subject);
             const attPercent = subjectAtt ? subjectAtt.percentage : 0;
             const attendanceMarks = academicCalc.calcAttendanceMarks(attPercent, settings.attendanceWeight, settings.attendanceSlabs);
 
-            const marks = { ia1, ia2, ese, oralExam, tw: twData.total, twBreakdown: twData };
+            const marks = { ia1, ia2 };
             const finalScore = calcFinalScore(marks, attPercent);
 
             marksStats.push({
@@ -501,43 +465,8 @@ router.get('/marks-summary', async (req, res) => {
 
             const ia1 = getTestScore('IA1');
             const ia2 = getTestScore('IA2');
-            const ese = getTestScore('ESE');
-            const oralExam = getTestScore('Oral Exam');
 
-            // TW data
-            const experimentRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
-            const assignmentRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
-            const labAttRecords = await AssignmentMark.find({ classId, subject, type: 'lab_attendance' });
-            const vivaRecords = await AssignmentMark.find({ classId, subject, type: 'internal_viva' });
-            const config = await SubjectConfig.findOne({ classId, subject });
-
-            const expScores = experimentRecords.map(em => {
-                const sm = em.marks.find(m => m.studentId.toString() === studentId.toString());
-                return sm?.score ?? null;
-            }).filter(s => s !== null);
-            const assignScores = assignmentRecords.map(am => {
-                const sm = am.marks.find(m => m.studentId.toString() === studentId.toString());
-                return sm?.score ?? null;
-            }).filter(s => s !== null);
-
-            let labAttScore = 0;
-            if (labAttRecords.length > 0) {
-                const sm = labAttRecords[0].marks.find(m => m.studentId.toString() === studentId.toString());
-                labAttScore = sm?.score ?? 0;
-            }
-            let vivaScore = 0;
-            if (vivaRecords.length > 0) {
-                const sm = vivaRecords[0].marks.find(m => m.studentId.toString() === studentId.toString());
-                vivaScore = sm?.score ?? 0;
-            }
-
-            const twData = buildTWBreakdown(
-                expScores, config?.experimentMaxScore || 10,
-                assignScores, config?.assignmentMaxScore || 10,
-                labAttScore, vivaScore
-            );
-
-            const marks = { ia1, ia2, ese, oralExam, tw: twData.total, twBreakdown: twData };
+            const marks = { ia1, ia2 };
             const finalScore = calcFinalScore(marks, attPercent);
 
             marksSummary.push({

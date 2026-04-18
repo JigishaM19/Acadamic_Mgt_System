@@ -123,7 +123,7 @@ const HodDashboard = () => {
             {/* Year-wise Performance Overview */}
             <div className="card" style={{ marginBottom: '24px' }}>
                 <div className="card-header">
-                    <h2 className="card-title">Year-wise Performance Overview</h2>
+                    <h2 className="card-title">Year-wise IA Performance</h2>
                 </div>
                 <div className="year-cards-grid">
                     {[1, 2, 3, 4].map(year => {
@@ -144,7 +144,7 @@ const HodDashboard = () => {
                                     </div>
                                     <div className="year-stat">
                                         <span className="stat-value" style={{ color: getStatusColor(avgTestScore) }}>{avgTestScore}%</span>
-                                        <span className="stat-label">Avg Score</span>
+                                        <span className="stat-label">IA Avg</span>
                                     </div>
                                 </div>
                                 <div className="attendance-bar">

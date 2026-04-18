@@ -7,7 +7,7 @@ const Class = require('../models/Class');
 const Timetable = require('../models/Timetable');
 const Attendance = require('../models/Attendance');
 const Test = require('../models/Test');
-const { FIXED_TEST_TYPES, calcFinalScore, buildTWBreakdown } = require('../utils/markCalculationService');
+const { FIXED_TEST_TYPES, calcFinalScore } = require('../utils/markCalculationService');
 const TimeSlot = require('../models/TimeSlot');
 const LeaveRequest = require('../models/LeaveRequest');
 const Complaint = require('../models/Complaint');
@@ -904,13 +904,6 @@ router.get('/tests/:classId/:subject/marks-summary', async (req, res) => {
         const tests = await Test.find({ classId, subject });
         const attendanceRecords = await Attendance.find({ classId, subject });
 
-        // Fetch assignment/experiment marks
-        const assignmentMarkRecords = await AssignmentMark.find({ classId, subject, type: 'assignment' });
-        const experimentMarkRecords = await AssignmentMark.find({ classId, subject, type: 'experiment' });
-        const labAttendanceRecords = await AssignmentMark.find({ classId, subject, type: 'lab_attendance' });
-        const internalVivaRecords = await AssignmentMark.find({ classId, subject, type: 'internal_viva' });
-        const config = await SubjectConfig.findOne({ classId, subject });
-
         const marksSummary = [];
         for (const student of students) {
             const sid = student._id.toString();
@@ -934,38 +927,8 @@ router.get('/tests/:classId/:subject/marks-summary', async (req, res) => {
 
             const ia1 = getTestScore('IA1');
             const ia2 = getTestScore('IA2');
-            const ese = getTestScore('ESE');
-            const oralExam = getTestScore('Oral Exam');
 
-            // Build TW from assignment data
-            const expScores = experimentMarkRecords.map(em => {
-                const sm = em.marks.find(m => m.studentId.toString() === sid);
-                return sm?.score ?? null;
-            }).filter(s => s !== null);
-            const assignScores = assignmentMarkRecords.map(am => {
-                const sm = am.marks.find(m => m.studentId.toString() === sid);
-                return sm?.score ?? null;
-            }).filter(s => s !== null);
-
-            // Lab attendance & internal viva (single value per student)
-            let labAttScore = 0;
-            if (labAttendanceRecords.length > 0) {
-                const sm = labAttendanceRecords[0].marks.find(m => m.studentId.toString() === sid);
-                labAttScore = sm?.score ?? 0;
-            }
-            let vivaScore = 0;
-            if (internalVivaRecords.length > 0) {
-                const sm = internalVivaRecords[0].marks.find(m => m.studentId.toString() === sid);
-                vivaScore = sm?.score ?? 0;
-            }
-
-            const twData = buildTWBreakdown(
-                expScores, config?.experimentMaxScore || 10,
-                assignScores, config?.assignmentMaxScore || 10,
-                labAttScore, vivaScore
-            );
-
-            const marks = { ia1, ia2, ese, oralExam, tw: twData.total, twBreakdown: twData };
+            const marks = { ia1, ia2 };
             const finalScore = calcFinalScore(marks, attPercent);
 
             marksSummary.push({
@@ -1099,9 +1062,7 @@ router.get('/tests/:classId/:subject/template', async (req, res) => {
 
         const testTypes = [
             { name: 'IA1', maxScore: 20 },
-            { name: 'IA2', maxScore: 20 },
-            { name: 'ESE', maxScore: 80 },
-            { name: 'Oral Exam', maxScore: 25 }
+            { name: 'IA2', maxScore: 20 }
         ];
 
         const workbook = new ExcelJS.Workbook();
@@ -1110,7 +1071,7 @@ router.get('/tests/:classId/:subject/template', async (req, res) => {
         const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
 
         ws.addRow([`Test Marks Template - ${decodedSubject}`]).font = { bold: true, size: 14 };
-        ws.addRow(['IA1: /20, IA2: /20, ESE: /80, Oral Exam: /25']).font = { bold: true, color: { argb: 'FFFF0000' } };
+        ws.addRow(['IA1: /20, IA2: /20']).font = { bold: true, color: { argb: 'FFFF0000' } };
         ws.addRow(['Instructions: Fill scores within max limits. Do NOT change Roll No column.']).font = { italic: true, color: { argb: 'FF666666' } };
         ws.addRow([]);
 
@@ -1125,7 +1086,7 @@ router.get('/tests/:classId/:subject/template', async (req, res) => {
 
         for (let idx = 0; idx < students.length; idx++) {
             const student = students[idx];
-            const row = [student.username || (idx + 1), student.fullName, '', '', '', ''];
+            const row = [student.username || (idx + 1), student.fullName, '', ''];
             const dataRow = ws.addRow(row);
             dataRow.eachCell((cell, colNumber) => {
                 cell.border = allBorders;
@@ -1147,7 +1108,7 @@ router.get('/tests/:classId/:subject/template', async (req, res) => {
 
         ws.getColumn(1).width = 14;
         ws.getColumn(2).width = 28;
-        for (let i = 3; i <= 6; i++) ws.getColumn(i).width = 18;
+        for (let i = 3; i <= 4; i++) ws.getColumn(i).width = 18;
 
         const buffer = await workbook.xlsx.writeBuffer();
         res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_Test_Marks_Template.xlsx"`);
@@ -1178,9 +1139,7 @@ router.get('/tests/:classId/:subject/export', async (req, res) => {
 
         const testTypes = [
             { name: 'IA1', maxScore: 20 },
-            { name: 'IA2', maxScore: 20 },
-            { name: 'ESE', maxScore: 80 },
-            { name: 'Oral Exam', maxScore: 25 }
+            { name: 'IA2', maxScore: 20 }
         ];
 
         const workbook = new ExcelJS.Workbook();
@@ -1190,7 +1149,7 @@ router.get('/tests/:classId/:subject/export', async (req, res) => {
 
         ws.addRow([`Test Marks - ${decodedSubject}`]).font = { bold: true, size: 14 };
         ws.addRow([`Class: ${classDoc?.name || 'N/A'} | Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
-        ws.addRow(['IA1: /20, IA2: /20, ESE: /80, Oral Exam: /25']).font = { bold: true };
+        ws.addRow(['IA1: /20, IA2: /20']).font = { bold: true };
         ws.addRow([]);
 
         const headers = ['Roll No', 'Student Name', ...testTypes.map(t => `${t.name} (/${t.maxScore})`)];
@@ -1226,7 +1185,7 @@ router.get('/tests/:classId/:subject/export', async (req, res) => {
 
         ws.getColumn(1).width = 14;
         ws.getColumn(2).width = 28;
-        for (let i = 3; i <= 6; i++) ws.getColumn(i).width = 18;
+        for (let i = 3; i <= 4; i++) ws.getColumn(i).width = 18;
 
         const buffer = await workbook.xlsx.writeBuffer();
         res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_Test_Marks.xlsx"`);
@@ -1252,9 +1211,7 @@ router.post('/tests/upload', upload.single('file'), async (req, res) => {
 
         const testTypes = [
             { name: 'IA1', maxScore: 20 },
-            { name: 'IA2', maxScore: 20 },
-            { name: 'ESE', maxScore: 80 },
-            { name: 'Oral Exam', maxScore: 25 }
+            { name: 'IA2', maxScore: 20 }
         ];
 
         const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
