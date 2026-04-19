@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { FaUmbrellaBeach } from 'react-icons/fa';
+import DetailModal from '../../components/DetailModal';
 
 const CCLeaveRequests = () => {
     const [leaveRequests, setLeaveRequests] = useState([]);
@@ -9,11 +10,13 @@ const CCLeaveRequests = () => {
     const [showModal, setShowModal] = useState(false);
     const [formData, setFormData] = useState({
         type: 'personal',
-        startDate: '',
-        endDate: '',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
         reason: ''
     });
     const [submitting, setSubmitting] = useState(false);
+    const [message, setMessage] = useState(null);
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     useEffect(() => {
         fetchLeaveRequests();
@@ -42,16 +45,37 @@ const CCLeaveRequests = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (!formData.reason.trim()) {
+            setMessage({ type: 'error', text: 'Please provide a reason' });
+            return;
+        }
+
+        if (new Date(formData.endDate) < new Date(formData.startDate)) {
+            setMessage({ type: 'error', text: 'End date cannot be before start date' });
+            return;
+        }
+
         setSubmitting(true);
+        setMessage(null);
 
         try {
             await api.post('/cc/leave-requests', formData);
             await fetchLeaveRequests();
             setShowModal(false);
-            setFormData({ type: 'personal', startDate: '', endDate: '', reason: '' });
+            setFormData({
+                type: 'personal',
+                startDate: new Date().toISOString().split('T')[0],
+                endDate: new Date().toISOString().split('T')[0],
+                reason: ''
+            });
+            setActiveTab('my'); // Switch to 'My Requests' to show the new request
+            alert('Leave request submitted successfully!');
         } catch (error) {
             console.error('Failed to submit leave request:', error);
-            alert('Failed to submit leave request');
+            const errorMsg = error.response?.data?.message || 'Failed to submit leave request';
+            setMessage({ type: 'error', text: errorMsg });
+            alert(errorMsg);
         } finally {
             setSubmitting(false);
         }
@@ -144,7 +168,7 @@ const CCLeaveRequests = () => {
                         </thead>
                         <tbody>
                             {currentRequests.map(request => (
-                                <tr key={request._id}>
+                                <tr key={request._id} onClick={() => setSelectedDetail(request)} style={{ cursor: 'pointer' }}>
                                     <td>
                                         <div style={{ fontWeight: '500' }}>
                                             {request.userId?.fullName || `${request.userId?.firstName} ${request.userId?.lastName}`}
@@ -178,7 +202,7 @@ const CCLeaveRequests = () => {
                                         </span>
                                     </td>
                                     {activeTab === 'student' && (
-                                        <td>
+                                        <td onClick={(e) => e.stopPropagation()}>
                                             {request.status === 'pending' ? (
                                                 <div style={{ display: 'flex', gap: '8px' }}>
                                                     <button
@@ -216,13 +240,26 @@ const CCLeaveRequests = () => {
 
             {/* Submit Leave Request Modal */}
             {showModal && (
-                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                <div className="modal-overlay show" onClick={() => setShowModal(false)}>
                     <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
                         <div className="modal-header">
                             <h3>Submit Leave Request</h3>
                             <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
                         </div>
-                        <form onSubmit={handleSubmit}>
+                        <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
+                            {message && (
+                                <div className={`message ${message.type}`} style={{
+                                    padding: '10px',
+                                    borderRadius: '8px',
+                                    marginBottom: '20px',
+                                    background: message.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+                                    color: message.type === 'error' ? 'var(--danger)' : 'var(--success)',
+                                    fontSize: '14px',
+                                    textAlign: 'center'
+                                }}>
+                                    {message.text}
+                                </div>
+                            )}
                             <div className="form-group">
                                 <label>Leave Type</label>
                                 <select
@@ -279,6 +316,21 @@ const CCLeaveRequests = () => {
                     </div>
                 </div>
             )}
+
+            <DetailModal
+                isOpen={!!selectedDetail}
+                onClose={() => setSelectedDetail(null)}
+                title="Leave Request Details"
+                fields={selectedDetail ? [
+                    { label: 'Requester', value: selectedDetail.userId?.fullName },
+                    { label: 'Role', value: selectedDetail.userId?.role },
+                    { label: 'Leave Type', value: selectedDetail.type },
+                    { label: 'Duration', value: `${formatDate(selectedDetail.startDate)} — ${formatDate(selectedDetail.endDate)}` },
+                    { label: 'Reason', value: selectedDetail.reason },
+                    { label: 'Status', value: selectedDetail.status, badge: true, badgeStyle: { ...getStatusBadge(selectedDetail.status) } },
+                    { label: 'Reviewer Remark', value: selectedDetail.reviewRemark || '—' }
+                ] : []}
+            />
         </div>
     );
 };

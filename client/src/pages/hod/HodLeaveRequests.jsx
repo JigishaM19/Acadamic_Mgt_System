@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
+import DetailModal from '../../components/DetailModal';
 import { FiFileText, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 
 const HodLeaveRequests = () => {
@@ -9,6 +10,7 @@ const HodLeaveRequests = () => {
     const [filter, setFilter] = useState('');
     const [reviewingRequest, setReviewingRequest] = useState(null);
     const [reviewData, setReviewData] = useState({ status: '', reviewRemark: '' });
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     useEffect(() => {
         fetchLeaveRequests();
@@ -98,7 +100,7 @@ const HodLeaveRequests = () => {
                                     </tr>
                                 ) : (
                                     leaveRequests.map(req => (
-                                        <tr key={req._id}>
+                                        <tr key={req._id} onClick={() => setSelectedDetail(req)} style={{ cursor: 'pointer' }}>
                                             <td><strong>{req.userId?.fullName}</strong></td>
                                             <td>
                                                 <span className="badge badge-primary">
@@ -116,7 +118,7 @@ const HodLeaveRequests = () => {
                                                 </span>
                                             </td>
                                             <td>{getStatusBadge(req.status)}</td>
-                                            <td className="actions-cell">
+                                            <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
                                                 {req.status === 'pending' ? (
                                                     <>
                                                         <button
@@ -180,6 +182,22 @@ const HodLeaveRequests = () => {
                     </button>
                 </div>
             </Modal>
+
+            <DetailModal
+                isOpen={!!selectedDetail}
+                onClose={() => setSelectedDetail(null)}
+                title="Leave Request Details"
+                fields={selectedDetail ? [
+                    { label: 'Requester', value: selectedDetail.userId?.fullName },
+                    { label: 'Role', value: selectedDetail.userId?.role, badge: true, badgeStyle: { background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' } },
+                    { label: 'Class', value: selectedDetail.userId?.classId?.name || '—' },
+                    { label: 'Leave Type', value: selectedDetail.type },
+                    { label: 'Duration', value: `${formatDate(selectedDetail.startDate)} — ${formatDate(selectedDetail.endDate)}` },
+                    { label: 'Reason', value: selectedDetail.reason },
+                    { label: 'Status', value: selectedDetail.status?.charAt(0).toUpperCase() + selectedDetail.status?.slice(1), badge: true, badgeStyle: { background: selectedDetail.status === 'approved' ? 'rgba(16,185,129,0.1)' : selectedDetail.status === 'rejected' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)', color: selectedDetail.status === 'approved' ? 'var(--success)' : selectedDetail.status === 'rejected' ? 'var(--danger)' : 'var(--warning)' } },
+                    { label: 'Reviewer Remark', value: selectedDetail.reviewRemark || '—' }
+                ] : []}
+            />
         </div>
     );
 };

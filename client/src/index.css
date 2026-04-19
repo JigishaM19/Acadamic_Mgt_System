@@ -754,6 +754,23 @@ textarea:focus {
   min-width: 150px;
 }
 
+/* Compact filter variant for dense pages */
+.filter-group--compact {
+  gap: 8px;
+}
+
+.filter-group--compact select {
+  min-width: auto;
+  padding: 6px 28px 6px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  height: 32px;
+}
+
+.filter-group--compact .filter-icon {
+  font-size: 14px;
+}
+
 /* ============================================
    Login Page - Premium Redesign
    ============================================ */
@@ -3082,3 +3099,572 @@ textarea:focus {
     text-align: center;
   }
 }
+
+/* ============================================
+   REDESIGNED DASHBOARD STYLES (HOD / Teacher / CC)
+   ============================================ */
+
+/* Dashboard wrapper */
+.hod-dash {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* --- Stat Cards Row --- */
+.hod-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.hod-stat-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 20px;
+  border-radius: 14px;
+  border: 1px solid;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.hod-stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+
+.hod-stat-accent {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  opacity: 0.7;
+}
+
+.hod-stat-icon {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 22px;
+}
+
+.hod-stat-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.hod-stat-value {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--gray-800);
+}
+
+.hod-stat-label {
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-top: 2px;
+}
+
+/* --- Section Card --- */
+.hod-section-card {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  border: 1px solid var(--gray-200);
+}
+
+.hod-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.hod-section-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hod-section-title-group h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin: 0;
+}
+
+.hod-section-icon {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.hod-section-subtitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+/* --- Year / Subject Grid Cards --- */
+.hod-year-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+}
+
+.hod-year-card {
+  background: var(--gray-50);
+  border-radius: 14px;
+  padding: 20px;
+  border: 1px solid var(--gray-200);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hod-year-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.07);
+}
+
+.hod-year-card--clickable {
+  cursor: pointer;
+}
+
+.hod-year-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.hod-year-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gray-800);
+}
+
+.hod-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hod-badge.good {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+.hod-badge.warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.hod-badge.critical {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.hod-year-metrics {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 14px;
+}
+
+.hod-year-metric {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  text-align: center;
+}
+
+.hod-year-metric-divider {
+  width: 1px;
+  height: 32px;
+  background: var(--gray-300);
+  flex-shrink: 0;
+}
+
+.hod-metric-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--gray-800);
+  line-height: 1.1;
+}
+
+.hod-metric-label {
+  font-size: 11px;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.hod-progress-track {
+  height: 6px;
+  background: var(--gray-200);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.hod-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Teacher class meta text */
+.tch-class-meta {
+  padding: 0 0 10px;
+  color: var(--gray-500);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* --- At-Risk Students list (HOD) --- */
+.hod-risk-list {
+  max-height: 160px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.hod-risk-student {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 13px;
+}
+
+.hod-risk-student:last-child {
+  border-bottom: none;
+}
+
+.hod-risk-name {
+  color: var(--gray-700);
+  font-weight: 500;
+}
+
+.hod-risk-pct {
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+.hod-risk-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 0;
+  color: var(--gray-500);
+  font-size: 13px;
+}
+
+/* --- Bottom Grid (Actions + Pending) --- */
+.hod-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+/* Actions grid */
+.hod-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.hod-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 12px;
+  background: var(--gray-50);
+  border-radius: 12px;
+  border: 1px solid var(--gray-200);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-700);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.hod-action-btn:hover {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.25);
+}
+
+.hod-action-btn:hover .hod-action-icon {
+  color: #fff;
+}
+
+.hod-action-icon {
+  color: var(--primary);
+  transition: color 0.2s ease;
+}
+
+/* Pending items */
+.hod-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hod-pending-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--gray-50);
+  border-radius: 12px;
+  border: 1px solid var(--gray-200);
+  transition: background 0.2s ease;
+}
+
+.hod-pending-row:hover {
+  background: var(--gray-100);
+}
+
+.hod-pending-icon {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.hod-pending-icon.warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.hod-pending-icon.danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.hod-pending-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.hod-pending-count {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--gray-800);
+  line-height: 1.15;
+}
+
+.hod-pending-label {
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+/* --- Teacher Live Lecture Card --- */
+.tch-live-card {
+  position: relative;
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  background: linear-gradient(135deg, #4f46e5, #6366f1, #818cf8);
+  color: #fff;
+  box-shadow: 0 8px 30px rgba(99, 102, 241, 0.3);
+}
+
+.tch-live-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.tch-live-content {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 28px;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.tch-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background: rgba(255,255,255,0.18);
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-bottom: 8px;
+}
+
+.tch-live-class {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+
+.tch-live-detail {
+  margin: 0;
+  opacity: 0.9;
+  font-size: 14px;
+}
+
+.tch-live-time {
+  margin: 4px 0 0;
+  opacity: 0.75;
+  font-size: 13px;
+}
+
+.tch-live-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: #fff;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.tch-live-btn:disabled {
+  background: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.85);
+  cursor: not-allowed;
+}
+
+.tch-live-btn:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+/* --- CC Class Header --- */
+.cc-class-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  background: var(--white);
+  border-radius: 16px;
+  border: 1px solid var(--gray-200);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.cc-class-name {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--gray-800);
+  margin: 0;
+}
+
+.cc-class-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: #fff;
+  margin-top: 6px;
+}
+
+.cc-risk-pill {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+/* --- Responsive tweaks --- */
+@media (max-width: 768px) {
+  .hod-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .hod-year-grid {
+    grid-template-columns: 1fr;
+  }
+  .hod-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+  .tch-live-content {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 20px;
+  }
+  .tch-live-btn {
+    align-self: stretch;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .hod-stats-row {
+    grid-template-columns: 1fr;
+  }
+  .hod-actions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   Detail Modal Animations
+   ============================================ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translate(-50%, -45%); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+/* Clickable table rows */
+.table tbody tr[style*="cursor: pointer"]:hover,
+.data-table tbody tr[style*="cursor: pointer"]:hover {
+  background: var(--gray-50, #f9fafb) !important;
+}

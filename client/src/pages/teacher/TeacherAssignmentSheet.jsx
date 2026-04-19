@@ -15,8 +15,7 @@ const TeacherAssignmentSheet = () => {
     const [students, setStudents] = useState([]);
     const [assignments, setAssignments] = useState([]);
     const [experiments, setExperiments] = useState([]);
-    const [labAttendance, setLabAttendance] = useState([]);
-    const [internalViva, setInternalViva] = useState([]);
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
@@ -43,15 +42,7 @@ const TeacherAssignmentSheet = () => {
             setStudents(res.data.students);
             setAssignments(res.data.assignments);
             setExperiments(res.data.experiments);
-            // Fetch lab attendance & internal viva
-            try {
-                const laRes = await api.get(`/teacher/assignments/${classId}/${encodeURIComponent(decodedSubject)}?type=lab_attendance`);
-                setLabAttendance(laRes.data.assignments || laRes.data.experiments || []);
-            } catch { setLabAttendance([]); }
-            try {
-                const ivRes = await api.get(`/teacher/assignments/${classId}/${encodeURIComponent(decodedSubject)}?type=internal_viva`);
-                setInternalViva(ivRes.data.assignments || ivRes.data.experiments || []);
-            } catch { setInternalViva([]); }
+
         } catch (err) {
             console.error('Failed to fetch assignment data:', err);
         } finally {
@@ -86,10 +77,7 @@ const TeacherAssignmentSheet = () => {
     };
 
     const saveMarks = async (type, number) => {
-        let maxScore;
-        if (type === 'assignment') maxScore = config.assignmentMaxScore;
-        else if (type === 'experiment') maxScore = config.experimentMaxScore;
-        else maxScore = 5; // lab_attendance, internal_viva
+        const maxScore = type === 'assignment' ? config.assignmentMaxScore : config.experimentMaxScore;
 
         const marks = students.map(s => {
             const inputEl = document.getElementById(`${type}-${number}-${s._id}`);
@@ -119,8 +107,8 @@ const TeacherAssignmentSheet = () => {
                 maxScore,
                 marks
             });
-            const typeLabel = type === 'assignment' ? 'Assignment' : type === 'experiment' ? 'Experiment' : type === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
-            setMessage(`${typeLabel} ${type === 'lab_attendance' || type === 'internal_viva' ? '' : number + ' '}saved!`);
+            const typeLabel = type === 'assignment' ? 'Assignment' : 'Experiment';
+            setMessage(`${typeLabel} ${number} saved!`);
             fetchData();
             setTimeout(() => setMessage(''), 3000);
         } catch (err) {
@@ -130,7 +118,7 @@ const TeacherAssignmentSheet = () => {
         }
     };
 
-    const getTypeLabel = (t) => t === 'assignment' ? 'Assignment' : t === 'experiment' ? 'Experiment' : t === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
+    const getTypeLabel = (t) => t === 'assignment' ? 'Assignment' : 'Experiment';
 
     const handleExport = async (type) => {
         try {
@@ -202,11 +190,10 @@ const TeacherAssignmentSheet = () => {
 
     if (loading) return <div className="loading"><div className="spinner"></div></div>;
 
-    const activeRecords = activeTab === 'assignment' ? assignments : activeTab === 'experiment' ? experiments : activeTab === 'lab_attendance' ? labAttendance : internalViva;
-    const isTWComponent = activeTab === 'lab_attendance' || activeTab === 'internal_viva';
-    const totalCount = isTWComponent ? 1 : (activeTab === 'assignment' ? config.totalAssignments : config.totalExperiments);
-    const maxScore = isTWComponent ? 5 : (activeTab === 'assignment' ? config.assignmentMaxScore : config.experimentMaxScore);
-    const label = activeTab === 'assignment' ? 'Assignment' : activeTab === 'experiment' ? 'Experiment' : activeTab === 'lab_attendance' ? 'Lab Attendance' : 'Internal Viva';
+    const activeRecords = activeTab === 'assignment' ? assignments : experiments;
+    const totalCount = activeTab === 'assignment' ? config.totalAssignments : config.totalExperiments;
+    const maxScore = activeTab === 'assignment' ? config.assignmentMaxScore : config.experimentMaxScore;
+    const label = activeTab === 'assignment' ? 'Assignment' : 'Experiment';
 
     return (
         <div className="page-container">
@@ -377,20 +364,7 @@ const TeacherAssignmentSheet = () => {
                 >
                     Experiments ({config.totalExperiments})
                 </button>
-                <button
-                    className={`btn ${activeTab === 'lab_attendance' ? 'btn-primary' : 'btn-outline'}`}
-                    onClick={() => setActiveTab('lab_attendance')}
-                    style={{ borderRadius: '8px 8px 0 0' }}
-                >
-                    Lab Attendance (/5)
-                </button>
-                <button
-                    className={`btn ${activeTab === 'internal_viva' ? 'btn-primary' : 'btn-outline'}`}
-                    onClick={() => setActiveTab('internal_viva')}
-                    style={{ borderRadius: '8px 8px 0 0' }}
-                >
-                    Internal Viva (/5)
-                </button>
+
             </div>
 
             {totalCount === 0 ? (

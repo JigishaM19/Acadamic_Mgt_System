@@ -174,25 +174,25 @@ const Lectures = () => {
                     <h3><FiBookOpen style={{ marginRight: '6px' }} /> Lecture Assignments</h3>
                     <button className="btn btn-primary" onClick={openAddModal}><FiPlus style={{ marginRight: '4px' }} /> Add Lecture</button>
                 </div>
-                <div className="filter-group" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '8px', display: 'flex', alignItems: 'center' }}>
-                    <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ minWidth: '140px' }}>
-                        <option value="">All Departments</option>
+                <div className="filter-group filter-group--compact" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '8px', display: 'flex', alignItems: 'center' }}>
+                    <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+                        <option value="">All Depts</option>
                         {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
                     </select>
-                    <select value={yearFilter} onChange={(e) => { setYearFilter(e.target.value); setSemFilter(''); }} style={{ minWidth: '120px' }}>
+                    <select value={yearFilter} onChange={(e) => { setYearFilter(e.target.value); setSemFilter(''); }}>
                         <option value="">All Years</option>
                         <option value="1">1st Year</option>
                         <option value="2">2nd Year</option>
                         <option value="3">3rd Year</option>
                         <option value="4">4th Year</option>
                     </select>
-                    <select value={semFilter} onChange={(e) => setSemFilter(e.target.value)} style={{ minWidth: '120px' }} disabled={!yearFilter}>
+                    <select value={semFilter} onChange={(e) => setSemFilter(e.target.value)} disabled={!yearFilter}>
                         <option value="">All Semesters</option>
                         {getFilterSemesterOptions(yearFilter).map(opt => (
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                     </select>
-                    <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ minWidth: '120px' }}>
+                    <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
                         <option value="">All Types</option>
                         <option value="lecture">Lecture</option>
                         <option value="practical">Practical</option>

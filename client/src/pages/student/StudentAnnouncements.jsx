@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { FaBullhorn } from 'react-icons/fa';
 import { FiUser } from 'react-icons/fi';
+import DetailModal from '../../components/DetailModal';
 
 const StudentAnnouncements = () => {
     const [announcements, setAnnouncements] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     useEffect(() => {
         fetchAnnouncements();
@@ -87,8 +89,9 @@ const StudentAnnouncements = () => {
                                 borderRadius: '12px',
                                 padding: '20px',
                                 background: 'var(--gray-50)',
-                                transition: 'var(--transition)'
-                            }}>
+                                transition: 'var(--transition)',
+                                cursor: 'pointer'
+                            }} onClick={() => setSelectedDetail(ann)}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                                     <div>
                                         <h3 style={{ fontSize: '16px', fontWeight: '600', color: 'var(--gray-800)', marginBottom: '4px' }}>
@@ -121,6 +124,19 @@ const StudentAnnouncements = () => {
                     </div>
                 )}
             </div>
+
+            <DetailModal
+                isOpen={!!selectedDetail}
+                onClose={() => setSelectedDetail(null)}
+                title="Announcement Details"
+                fields={selectedDetail ? [
+                    { label: 'Title', value: selectedDetail.title },
+                    { label: 'Target', value: getTargetLabel(selectedDetail), badge: true, badgeStyle: { ...getTargetBadgeStyle(selectedDetail.targetType) } },
+                    { label: 'Posted By', value: `${selectedDetail.createdBy?.fullName || 'Unknown'} (${getRoleBadge(selectedDetail.createdBy?.role)})` },
+                    { label: 'Date', value: formatDate(selectedDetail.createdAt) },
+                    { label: 'Message', value: selectedDetail.message }
+                ] : []}
+            />
         </div>
     );
 };

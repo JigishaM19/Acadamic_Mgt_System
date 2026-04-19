@@ -103,6 +103,32 @@ router.get('/stats', async (req, res) => {
             const classDoc = await Class.findById(data.classId).populate('departmentId');
             const departmentName = classDoc?.departmentId?.name || 'N/A';
 
+            // Get total lectures (attendance record count)
+            const totalLectures = attendanceRecords.length;
+
+            // Get IA test scores for this class-subject
+            const tests = await Test.find({
+                classId: data.classId,
+                subject: data.subject,
+                teacherId: teacherId,
+                testType: { $in: ['IA1', 'IA2'] }
+            });
+
+            let testTotalScore = 0;
+            let testTotalMaxScore = 0;
+            tests.forEach(test => {
+                test.marks.forEach(mark => {
+                    if (mark.score !== undefined && mark.score !== null) {
+                        testTotalScore += mark.score;
+                        testTotalMaxScore += test.maxScore;
+                    }
+                });
+            });
+
+            const avgTestScore = testTotalMaxScore > 0
+                ? Math.round((testTotalScore / testTotalMaxScore) * 100)
+                : 0;
+
             classStats.push({
                 classId: data.classId,
                 className: data.className,
@@ -111,6 +137,9 @@ router.get('/stats', async (req, res) => {
                 subject: data.subject,
                 totalStudents: studentCount,
                 avgAttendance,
+                avgTestScore,
+                totalLectures,
+                totalTests: tests.length,
                 status
             });
         }

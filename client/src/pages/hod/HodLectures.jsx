@@ -173,22 +173,22 @@ const HodLectures = () => {
                 </div>
 
                 {/* Filters */}
-                <div className="filter-group" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '8px', display: 'flex', alignItems: 'center' }}>
-                    <FiFilter style={{ color: 'var(--gray-500)' }} />
-                    <select value={yearFilter} onChange={(e) => { setYearFilter(e.target.value); setSemFilter(''); }} style={{ minWidth: '120px' }}>
+                <div className="filter-group filter-group--compact" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '8px', display: 'flex', alignItems: 'center' }}>
+                    <FiFilter style={{ color: 'var(--gray-500)', fontSize: '14px' }} />
+                    <select value={yearFilter} onChange={(e) => { setYearFilter(e.target.value); setSemFilter(''); }}>
                         <option value="">All Years</option>
                         <option value="1">1st Year</option>
                         <option value="2">2nd Year</option>
                         <option value="3">3rd Year</option>
                         <option value="4">4th Year</option>
                     </select>
-                    <select value={semFilter} onChange={(e) => setSemFilter(e.target.value)} style={{ minWidth: '120px' }} disabled={!yearFilter}>
+                    <select value={semFilter} onChange={(e) => setSemFilter(e.target.value)} disabled={!yearFilter}>
                         <option value="">All Semesters</option>
                         {getFilterSemesterOptions(yearFilter).map(opt => (
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                     </select>
-                    <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ minWidth: '120px' }}>
+                    <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
                         <option value="">All Types</option>
                         <option value="lecture">Lecture</option>
                         <option value="practical">Practical</option>

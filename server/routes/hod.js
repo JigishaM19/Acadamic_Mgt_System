@@ -80,10 +80,33 @@ router.get('/stats', async (req, res) => {
                 ? Math.round((totalPresent / totalStudents) * 100)
                 : 0;
 
+            // Calculate average IA test score for the year
+            const yearTests = await Test.find({
+                classId: { $in: classIds },
+                testType: { $in: ['IA1', 'IA2'] }
+            });
+
+            let testTotalScore = 0;
+            let testTotalMaxScore = 0;
+            yearTests.forEach(test => {
+                test.marks.forEach(mark => {
+                    if (mark.score !== undefined && mark.score !== null) {
+                        testTotalScore += mark.score;
+                        testTotalMaxScore += test.maxScore;
+                    }
+                });
+            });
+
+            const avgTestScore = testTotalMaxScore > 0
+                ? Math.round((testTotalScore / testTotalMaxScore) * 100)
+                : 0;
+
             yearStats[year] = {
                 classCount: yearClasses.length,
                 studentCount,
-                avgAttendance
+                avgAttendance,
+                avgTestScore,
+                totalTests: yearTests.length
             };
         }
 

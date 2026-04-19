@@ -1104,11 +1104,15 @@ router.post('/leave-requests', async (req, res) => {
     try {
         const { type, startDate, endDate, reason } = req.body;
 
+        if (!startDate || !endDate || !reason) {
+            return res.status(400).json({ message: 'All fields are required' });
+        }
+
         const leaveRequest = new LeaveRequest({
             userId: req.user._id,
-            type,
-            startDate,
-            endDate,
+            type: type || 'personal',
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
             reason
         });
 
@@ -1118,7 +1122,7 @@ router.post('/leave-requests', async (req, res) => {
         res.status(201).json(leaveRequest);
     } catch (error) {
         console.error('CC leave request create error:', error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(500).json({ message: 'Server error: ' + error.message });
     }
 });
 

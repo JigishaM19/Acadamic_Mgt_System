@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
+import DetailModal from '../../components/DetailModal';
 import { FiCheckCircle, FiRefreshCw } from 'react-icons/fi';
 import { FaBullhorn } from 'react-icons/fa';
 
@@ -10,6 +11,7 @@ const HodComplaints = () => {
     const [filter, setFilter] = useState('');
     const [resolvingComplaint, setResolvingComplaint] = useState(null);
     const [resolveData, setResolveData] = useState({ status: 'resolved', remark: '' });
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     useEffect(() => {
         fetchComplaints();
@@ -112,7 +114,7 @@ const HodComplaints = () => {
                                     </tr>
                                 ) : (
                                     complaints.map(complaint => (
-                                        <tr key={complaint._id}>
+                                        <tr key={complaint._id} onClick={() => setSelectedDetail(complaint)} style={{ cursor: 'pointer' }}>
                                             <td><strong>{complaint.userId?.fullName}</strong></td>
                                             <td>
                                                 <span className="badge badge-primary">
@@ -127,7 +129,7 @@ const HodComplaints = () => {
                                             <td>{complaint.category}</td>
                                             <td>{formatDate(complaint.createdAt)}</td>
                                             <td>{getStatusBadge(complaint.status)}</td>
-                                            <td className="actions-cell">
+                                            <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
                                                 {complaint.status === 'open' && (
                                                     <button
                                                         className="btn btn-sm btn-secondary"
@@ -187,6 +189,22 @@ const HodComplaints = () => {
                     </button>
                 </div>
             </Modal>
+
+            <DetailModal
+                isOpen={!!selectedDetail}
+                onClose={() => setSelectedDetail(null)}
+                title="Complaint Details"
+                fields={selectedDetail ? [
+                    { label: 'Submitted By', value: selectedDetail.userId?.fullName },
+                    { label: 'Role', value: selectedDetail.userId?.role, badge: true, badgeStyle: { background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' } },
+                    { label: 'Subject', value: selectedDetail.subject },
+                    { label: 'Category', value: selectedDetail.category },
+                    { label: 'Description', value: selectedDetail.description },
+                    { label: 'Date', value: formatDate(selectedDetail.createdAt) },
+                    { label: 'Status', value: selectedDetail.status === 'in-progress' ? 'In Progress' : selectedDetail.status === 'resolved' ? 'Resolved' : 'Open', badge: true, badgeStyle: { background: selectedDetail.status === 'resolved' ? 'rgba(16,185,129,0.1)' : selectedDetail.status === 'in-progress' ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)', color: selectedDetail.status === 'resolved' ? 'var(--success)' : selectedDetail.status === 'in-progress' ? 'var(--warning)' : 'var(--danger)' } },
+                    { label: 'Resolution Remark', value: selectedDetail.remark || '—' }
+                ] : []}
+            />
         </div>
     );
 };

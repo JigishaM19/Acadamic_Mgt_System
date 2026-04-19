@@ -192,28 +192,28 @@ const Subjects = () => {
 
                 {/* Filters */}
                 <div className="toolbar" style={{ marginBottom: '0', paddingBottom: '12px', borderBottom: '1px solid var(--gray-200)' }}>
-                    <div className="filter-group" style={{ flexWrap: 'wrap' }}>
-                        <FiFilter style={{ color: 'var(--gray-500)' }} />
-                        <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterSemester(''); }} style={{ minWidth: '120px' }}>
+                    <div className="filter-group filter-group--compact" style={{ flexWrap: 'wrap' }}>
+                        <FiFilter style={{ color: 'var(--gray-500)', fontSize: '14px' }} />
+                        <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterSemester(''); }}>
                             <option value="">All Years</option>
                             <option value="1">1st Year</option>
                             <option value="2">2nd Year</option>
                             <option value="3">3rd Year</option>
                             <option value="4">4th Year</option>
                         </select>
-                        <select value={filterSemester} onChange={(e) => setFilterSemester(e.target.value)} style={{ minWidth: '120px' }} disabled={!filterYear}>
+                        <select value={filterSemester} onChange={(e) => setFilterSemester(e.target.value)} disabled={!filterYear}>
                             <option value="">All Semesters</option>
                             {getFilterSemesterOptions(filterYear).map(opt => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
                         </select>
-                        <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} style={{ minWidth: '140px' }}>
-                            <option value="">All Departments</option>
+                        <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)}>
+                            <option value="">All Depts</option>
                             {departments.map(d => (
                                 <option key={d._id} value={d._id}>{d.name}</option>
                             ))}
                         </select>
-                        <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ minWidth: '120px' }}>
+                        <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                             <option value="">All Types</option>
                             <option value="theory">Theory</option>
                             <option value="practical">Practical</option>

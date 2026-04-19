@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { FiCheckCircle } from 'react-icons/fi';
 import { FaBullhorn } from 'react-icons/fa';
+import DetailModal from '../../components/DetailModal';
 
 const CCComplaints = () => {
     const [complaints, setComplaints] = useState([]);
@@ -14,6 +15,7 @@ const CCComplaints = () => {
         category: 'other'
     });
     const [submitting, setSubmitting] = useState(false);
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     useEffect(() => {
         fetchComplaints();
@@ -146,7 +148,7 @@ const CCComplaints = () => {
                         </thead>
                         <tbody>
                             {currentComplaints.map(complaint => (
-                                <tr key={complaint._id}>
+                                <tr key={complaint._id} onClick={() => setSelectedDetail(complaint)} style={{ cursor: 'pointer' }}>
                                     <td>
                                         <div style={{ fontWeight: '500' }}>
                                             {complaint.userId?.fullName || `${complaint.userId?.firstName} ${complaint.userId?.lastName}`}
@@ -179,7 +181,7 @@ const CCComplaints = () => {
                                         </span>
                                     </td>
                                     {activeTab === 'student' && (
-                                        <td>
+                                        <td onClick={(e) => e.stopPropagation()}>
                                             {complaint.status !== 'resolved' ? (
                                                 <button
                                                     className="btn btn-success"
@@ -263,6 +265,22 @@ const CCComplaints = () => {
                     </div>
                 </div>
             )}
+
+            <DetailModal
+                isOpen={!!selectedDetail}
+                onClose={() => setSelectedDetail(null)}
+                title="Complaint Details"
+                fields={selectedDetail ? [
+                    { label: 'Submitted By', value: selectedDetail.userId?.fullName },
+                    { label: 'Role', value: selectedDetail.userId?.role },
+                    { label: 'Category', value: selectedDetail.category },
+                    { label: 'Subject', value: selectedDetail.subject },
+                    { label: 'Description', value: selectedDetail.description },
+                    { label: 'Date', value: formatDate(selectedDetail.createdAt) },
+                    { label: 'Status', value: selectedDetail.status, badge: true, badgeStyle: { ...getStatusBadge(selectedDetail.status) } },
+                    { label: 'Resolution Remark', value: selectedDetail.remark || '—' }
+                ] : []}
+            />
         </div>
     );
 };

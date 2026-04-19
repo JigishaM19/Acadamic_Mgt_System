@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DetailModal from '../../components/DetailModal';
 
 const StudentComplaints = () => {
     const [complaints, setComplaints] = useState([]);
@@ -7,6 +8,7 @@ const StudentComplaints = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [showForm, setShowForm] = useState(false);
+    const [selectedDetail, setSelectedDetail] = useState(null);
     const [formData, setFormData] = useState({
         subject: '',
         category: 'other',
@@ -115,6 +117,20 @@ const StudentComplaints = () => {
                 >
                     {showForm ? 'Cancel' : '+ New Complaint'}
                 </button>
+
+                <DetailModal
+                    isOpen={!!selectedDetail}
+                    onClose={() => setSelectedDetail(null)}
+                    title="Complaint Details"
+                    fields={selectedDetail ? [
+                        { label: 'Subject', value: selectedDetail.subject },
+                        { label: 'Category', value: selectedDetail.category },
+                        { label: 'Description', value: selectedDetail.description },
+                        { label: 'Date', value: formatDate(selectedDetail.createdAt) },
+                        { label: 'Status', value: getStatusLabel(selectedDetail.status), badge: true, badgeStyle: { background: selectedDetail.status === 'resolved' ? 'rgba(16,185,129,0.1)' : selectedDetail.status === 'in-progress' ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)', color: selectedDetail.status === 'resolved' ? '#10b981' : selectedDetail.status === 'in-progress' ? '#f59e0b' : '#ef4444' } },
+                        { label: 'Response', value: selectedDetail.remark || '—' }
+                    ] : []}
+                />
             </div>
 
             {error && <div className="alert alert-error">{error}</div>}
@@ -190,7 +206,7 @@ const StudentComplaints = () => {
                 {complaints.length > 0 ? (
                     <div className="complaints-list">
                         {complaints.map((complaint, index) => (
-                            <div key={complaint._id} className="complaint-card">
+                            <div key={complaint._id} className="complaint-card" onClick={() => setSelectedDetail(complaint)} style={{ cursor: 'pointer' }}>
                                 <div className="complaint-header">
                                     <div className="complaint-title">
                                         <span className="complaint-number">#{index + 1}</span>

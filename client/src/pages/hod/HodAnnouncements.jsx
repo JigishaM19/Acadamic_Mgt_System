@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { FiSend, FiTrash2 } from 'react-icons/fi';
 import { FaBullhorn } from 'react-icons/fa';
+import DetailModal from '../../components/DetailModal';
 
 const HodAnnouncements = () => {
     const [announcements, setAnnouncements] = useState([]);
@@ -17,6 +18,7 @@ const HodAnnouncements = () => {
         displayDuration: 24
     });
     const [submitting, setSubmitting] = useState(false);
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     useEffect(() => {
         fetchAnnouncements();
@@ -149,8 +151,9 @@ const HodAnnouncements = () => {
                                 borderRadius: '12px',
                                 padding: '20px',
                                 background: 'var(--gray-50)',
-                                transition: 'var(--transition)'
-                            }}>
+                                transition: 'var(--transition)',
+                                cursor: 'pointer'
+                            }} onClick={() => setSelectedDetail(ann)}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                                     <div>
                                         <h3 style={{ fontSize: '16px', fontWeight: '600', color: 'var(--gray-800)', marginBottom: '4px' }}>
@@ -174,7 +177,7 @@ const HodAnnouncements = () => {
                                         <button
                                             className="btn btn-danger btn-sm"
                                             style={{ padding: '4px 8px' }}
-                                            onClick={() => handleDelete(ann._id)}
+                                            onClick={(e) => { e.stopPropagation(); handleDelete(ann._id); }}
                                         >
                                             <FiTrash2 size={14} />
                                         </button>
@@ -188,6 +191,19 @@ const HodAnnouncements = () => {
                     </div>
                 )}
             </div>
+
+            <DetailModal
+                isOpen={!!selectedDetail}
+                onClose={() => setSelectedDetail(null)}
+                title="Announcement Details"
+                fields={selectedDetail ? [
+                    { label: 'Title', value: selectedDetail.title },
+                    { label: 'Target', value: getTargetLabel(selectedDetail), badge: true, badgeStyle: { ...getTargetBadgeStyle(selectedDetail.targetType) } },
+                    { label: 'Posted By', value: selectedDetail.createdBy?.fullName || 'Unknown' },
+                    { label: 'Date', value: formatDate(selectedDetail.createdAt) },
+                    { label: 'Message', value: selectedDetail.message }
+                ] : []}
+            />
 
             {/* Create Announcement Modal */}
             {showModal && (

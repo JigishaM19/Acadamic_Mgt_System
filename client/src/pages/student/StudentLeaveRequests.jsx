@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DetailModal from '../../components/DetailModal';
 
 const StudentLeaveRequests = () => {
     const [leaveRequests, setLeaveRequests] = useState([]);
@@ -7,6 +8,7 @@ const StudentLeaveRequests = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [showForm, setShowForm] = useState(false);
+    const [selectedDetail, setSelectedDetail] = useState(null);
     const [formData, setFormData] = useState({
         type: 'personal',
         startDate: '',
@@ -107,6 +109,20 @@ const StudentLeaveRequests = () => {
                 >
                     {showForm ? 'Cancel' : '+ New Request'}
                 </button>
+
+                <DetailModal
+                    isOpen={!!selectedDetail}
+                    onClose={() => setSelectedDetail(null)}
+                    title="Leave Request Details"
+                    fields={selectedDetail ? [
+                        { label: 'Leave Type', value: selectedDetail.type },
+                        { label: 'From', value: formatDate(selectedDetail.startDate) },
+                        { label: 'To', value: formatDate(selectedDetail.endDate) },
+                        { label: 'Reason', value: selectedDetail.reason },
+                        { label: 'Status', value: selectedDetail.status?.charAt(0).toUpperCase() + selectedDetail.status?.slice(1), badge: true, badgeStyle: { background: selectedDetail.status === 'approved' ? 'rgba(16,185,129,0.1)' : selectedDetail.status === 'rejected' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)', color: selectedDetail.status === 'approved' ? '#10b981' : selectedDetail.status === 'rejected' ? '#ef4444' : '#f59e0b' } },
+                        { label: 'Reviewer Remark', value: selectedDetail.reviewRemark || '—' }
+                    ] : []}
+                />
             </div>
 
             {error && <div className="alert alert-error">{error}</div>}
@@ -207,7 +223,7 @@ const StudentLeaveRequests = () => {
                             </thead>
                             <tbody>
                                 {leaveRequests.map((request, index) => (
-                                    <tr key={request._id}>
+                                    <tr key={request._id} onClick={() => setSelectedDetail(request)} style={{ cursor: 'pointer' }}>
                                         <td>{index + 1}</td>
                                         <td><span className="badge">{request.type}</span></td>
                                         <td>{formatDate(request.startDate)}</td>

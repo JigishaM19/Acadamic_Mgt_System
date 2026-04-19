@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { FiFileText } from 'react-icons/fi';
 import { FaUmbrellaBeach } from 'react-icons/fa';
+import DetailModal from '../../components/DetailModal';
 
 const TeacherLeaveRequests = () => {
     const [myLeaves, setMyLeaves] = useState([]);
@@ -11,6 +12,7 @@ const TeacherLeaveRequests = () => {
     const [activeTab, setActiveTab] = useState('my');
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     const [formData, setFormData] = useState({
         type: 'personal',
@@ -276,7 +278,7 @@ const TeacherLeaveRequests = () => {
                                     </thead>
                                     <tbody>
                                         {myLeaves.map(leave => (
-                                            <tr key={leave._id}>
+                                            <tr key={leave._id} onClick={() => setSelectedDetail(leave)} style={{ cursor: 'pointer' }}>
                                                 <td style={{ textTransform: 'capitalize' }}>{leave.type}</td>
                                                 <td>
                                                     {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
@@ -288,7 +290,7 @@ const TeacherLeaveRequests = () => {
                                                 <td style={{ color: 'var(--gray-500)', fontSize: '0.9rem' }}>
                                                     {leave.reviewRemark || '—'}
                                                 </td>
-                                                <td>
+                                                <td onClick={(e) => e.stopPropagation()}>
                                                     {leave.status === 'pending' && (
                                                         <button
                                                             className="btn btn-ghost"
@@ -330,7 +332,7 @@ const TeacherLeaveRequests = () => {
                                     </thead>
                                     <tbody>
                                         {studentLeaves.map(leave => (
-                                            <tr key={leave._id}>
+                                            <tr key={leave._id} onClick={() => setSelectedDetail(leave)} style={{ cursor: 'pointer' }}>
                                                 <td>{leave.userId?.fullName || 'N/A'}</td>
                                                 <td>{leave.userId?.classId?.name || 'N/A'}</td>
                                                 <td style={{ textTransform: 'capitalize' }}>{leave.type}</td>
@@ -354,6 +356,20 @@ const TeacherLeaveRequests = () => {
                     </div>
                 )}
             </div>
+
+            <DetailModal
+                isOpen={!!selectedDetail}
+                onClose={() => setSelectedDetail(null)}
+                title="Leave Request Details"
+                fields={selectedDetail ? [
+                    { label: 'Name', value: selectedDetail.userId?.fullName || 'You' },
+                    { label: 'Leave Type', value: selectedDetail.type },
+                    { label: 'Duration', value: `${formatDate(selectedDetail.startDate)} — ${formatDate(selectedDetail.endDate)}` },
+                    { label: 'Reason', value: selectedDetail.reason },
+                    { label: 'Status', value: selectedDetail.status, badge: true, badgeStyle: selectedDetail.status === 'approved' ? { background: 'var(--success-light)', color: 'var(--success)' } : selectedDetail.status === 'rejected' ? { background: 'var(--danger-light)', color: 'var(--danger)' } : { background: 'var(--warning-light)', color: 'var(--warning)' } },
+                    { label: 'Reviewer Remark', value: selectedDetail.reviewRemark || '—' }
+                ] : []}
+            />
         </div>
     );
 };

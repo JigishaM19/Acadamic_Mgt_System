@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { FiFileText, FiClipboard, FiCheckCircle } from 'react-icons/fi';
 import { FaBullhorn, FaHourglass } from 'react-icons/fa';
+import DetailModal from '../../components/DetailModal';
 
 const TeacherComplaints = () => {
     const [complaints, setComplaints] = useState([]);
@@ -9,6 +10,7 @@ const TeacherComplaints = () => {
     const [showForm, setShowForm] = useState(false);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     const [formData, setFormData] = useState({
         subject: '',
@@ -201,7 +203,7 @@ const TeacherComplaints = () => {
                             </thead>
                             <tbody>
                                 {complaints.map(complaint => (
-                                    <tr key={complaint._id}>
+                                    <tr key={complaint._id} onClick={() => setSelectedDetail(complaint)} style={{ cursor: 'pointer' }}>
                                         <td>{formatDate(complaint.createdAt)}</td>
                                         <td>
                                             <div style={{ fontWeight: '500' }}>{complaint.subject}</div>
@@ -265,6 +267,21 @@ const TeacherComplaints = () => {
                     </div>
                 </div>
             )}
+
+            <DetailModal
+                isOpen={!!selectedDetail}
+                onClose={() => setSelectedDetail(null)}
+                title="Complaint Details"
+                fields={selectedDetail ? [
+                    { label: 'Subject', value: selectedDetail.subject },
+                    { label: 'Category', value: selectedDetail.category },
+                    { label: 'Description', value: selectedDetail.description },
+                    { label: 'Date', value: formatDate(selectedDetail.createdAt) },
+                    { label: 'Status', value: selectedDetail.status, badge: true, badgeStyle: selectedDetail.status === 'resolved' ? { background: 'var(--success-light)', color: 'var(--success)' } : selectedDetail.status === 'in-progress' ? { background: 'var(--primary-light)', color: 'var(--primary)' } : { background: 'var(--warning-light)', color: 'var(--warning)' } },
+                    { label: 'Admin Remark', value: selectedDetail.remark || '—' },
+                    ...(selectedDetail.resolvedBy ? [{ label: 'Resolved By', value: selectedDetail.resolvedBy?.fullName || selectedDetail.resolvedBy }] : [])
+                ] : []}
+            />
         </div>
     );
 };
