@@ -433,7 +433,7 @@ router.put('/attendance/:id', async (req, res) => {
 });
 
 // @route   GET /api/cc/attendance/:subject/export
-// @desc    Export attendance sheet as Excel file for CC
+// @desc    Export attendance sheet as Excel file for CC (University format)
 router.get('/attendance/:subject/export', async (req, res) => {
     try {
         const ExcelJS = require('exceljs');
@@ -455,7 +455,7 @@ router.get('/attendance/:subject/export', async (req, res) => {
                 students = await User.find({
                     _id: { $in: batch.studentIds },
                     role: 'student'
-                }).select('fullName firstName lastName fatherName username rollNo').sort({ lastName: 1 });
+                }).select('fullName firstName lastName fatherName username rollNo').sort({ rollNo: 1 });
             } else {
                 students = [];
             }
@@ -463,7 +463,7 @@ router.get('/attendance/:subject/export', async (req, res) => {
             students = await User.find({
                 role: 'student',
                 classId
-            }).select('fullName firstName lastName fatherName username rollNo').sort({ lastName: 1 });
+            }).select('fullName firstName lastName fatherName username rollNo').sort({ rollNo: 1 });
         }
 
         // Get attendance records
@@ -494,7 +494,7 @@ router.get('/attendance/:subject/export', async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const ws = workbook.addWorksheet('Attendance');
 
-        const totalCols = 5 + attendanceRecords.length;
+        const totalCols = 5 + attendanceRecords.length + 3; // +3 for Total Conducted, Total Present, Attendance %
         const thinBorder = { style: 'thin' };
         const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
 
@@ -517,7 +517,7 @@ router.get('/attendance/:subject/export', async (req, res) => {
         ws.addRow([]);
 
         // Row 7: Column headers - Dates
-        const headerValues1 = ['R.No', 'Last Name', 'First Name', 'Middle Name', 'Batch'];
+        const headerValues1 = ['R.No', 'Name', 'Batch'];
         for (const record of attendanceRecords) {
             const dateStr = new Date(record.date).toLocaleDateString('en-IN', {
                 day: '2-digit',
@@ -526,6 +526,7 @@ router.get('/attendance/:subject/export', async (req, res) => {
             });
             headerValues1.push(dateStr);
         }
+        headerValues1.push('Total Conducted', 'Total Present', 'Attendance %');
         const headerRow1 = ws.addRow(headerValues1);
         headerRow1.eachCell((cell) => {
             cell.font = { bold: true };
@@ -535,11 +536,12 @@ router.get('/attendance/:subject/export', async (req, res) => {
         });
 
         // Row 8: Column headers - Time slots
-        const headerValues2 = ['', '', '', '', ''];
+        const headerValues2 = ['', '', ''];
         for (const record of attendanceRecords) {
             const slot = record.timeSlotId;
             headerValues2.push(slot ? `${slot.startTime} - ${slot.endTime}` : '');
         }
+        headerValues2.push('', '', '');
         const headerRow2 = ws.addRow(headerValues2);
         headerRow2.eachCell((cell, colNumber) => {
             cell.border = allBorders;
@@ -561,27 +563,35 @@ router.get('/attendance/:subject/export', async (req, res) => {
             }
 
             const rowValues = [
-                idx + 1,
-                student.lastName || '',
-                student.firstName || '',
-                student.fatherName || '',
+                student.rollNo || (idx + 1),
+                student.fullName,
                 studentBatch
             ];
+
+            let totalConducted = 0;
+            let totalPresent = 0;
 
             for (const record of attendanceRecords) {
                 const studentRecord = record.records?.find(r =>
                     r.studentId.toString() === student._id.toString()
                 );
+                if (studentRecord) {
+                    totalConducted++;
+                    if (studentRecord.status === 'present') totalPresent++;
+                }
                 rowValues.push(studentRecord?.status === 'present' ? 'P' : 'A');
             }
+
+            const attendancePct = totalConducted > 0 ? Math.round((totalPresent / totalConducted) * 100) : 0;
+            rowValues.push(totalConducted, totalPresent, `${attendancePct}%`);
 
             const dataRow = ws.addRow(rowValues);
             dataRow.eachCell((cell, colNumber) => {
                 cell.border = allBorders;
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // Color P/A cells (columns after the first 5)
-                if (colNumber > 5) {
+                // Color P/A cells (columns after the first 3, before summary cols)
+                if (colNumber > 3 && colNumber <= 3 + attendanceRecords.length) {
                     const val = cell.value;
                     if (val === 'P') {
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }; // Light green
@@ -591,18 +601,31 @@ router.get('/attendance/:subject/export', async (req, res) => {
                         cell.font = { color: { argb: 'FF9C0006' }, bold: true };
                     }
                 }
+
+                // Red highlight for attendance % below 75%
+                if (colNumber === 3 + attendanceRecords.length + 3) {
+                    if (attendancePct < 75) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+                        cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+                    }
+                }
             });
+            // Left-align name
+            dataRow.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
         });
 
         // Set column widths
         ws.getColumn(1).width = 6;    // R.No
-        ws.getColumn(2).width = 16;   // Last Name
-        ws.getColumn(3).width = 16;   // First Name
-        ws.getColumn(4).width = 16;   // Middle Name
-        ws.getColumn(5).width = 12;   // Batch
-        for (let i = 6; i <= totalCols; i++) {
-            ws.getColumn(i).width = 14;
+        ws.getColumn(2).width = 28;   // Name
+        ws.getColumn(3).width = 10;   // Batch
+        for (let i = 4; i <= 3 + attendanceRecords.length; i++) {
+            ws.getColumn(i).width = 12;
         }
+        // Summary columns
+        const summaryStart = 4 + attendanceRecords.length;
+        ws.getColumn(summaryStart).width = 14;     // Total Conducted
+        ws.getColumn(summaryStart + 1).width = 12;  // Total Present
+        ws.getColumn(summaryStart + 2).width = 14;  // Attendance %
 
         // Write to buffer and send
         const buffer = await workbook.xlsx.writeBuffer();
@@ -1382,7 +1405,7 @@ router.get('/defaulters', async (req, res) => {
 });
 
 // @route   GET /api/cc/defaulters/export
-// @desc    Export CC defaulters list as Excel sheet
+// @desc    Export CC defaulters list as Excel sheet (University format)
 router.get('/defaulters/export', async (req, res) => {
     try {
         const ExcelJS = require('exceljs');
@@ -1401,37 +1424,61 @@ router.get('/defaulters/export', async (req, res) => {
         const timetableSubjects = await Timetable.find({ classId }).distinct('subject');
         const allAttendance = await Attendance.find({ classId });
 
-        // Build student data
+        // Determine which subjects have practicals (batchId != null) vs lectures (batchId == null)
+        const subjectHasLectures = {};
+        const subjectHasPracticals = {};
+        for (const subj of timetableSubjects) {
+            const subjRecords = allAttendance.filter(r => r.subject === subj);
+            subjectHasLectures[subj] = subjRecords.some(r => !r.batchId);
+            subjectHasPracticals[subj] = subjRecords.some(r => !!r.batchId);
+        }
+
+        // Build student data with LC/LP/PP/PC per subject
         const studentData = [];
         for (const student of students) {
             const sid = student._id.toString();
-            const subjectAttendance = {};
+            const subjectDetails = {};
+            let grandTotalConducted = 0;
+            let grandTotalPresent = 0;
 
             for (const subj of timetableSubjects) {
                 const subjRecords = allAttendance.filter(r => r.subject === subj);
-                let subjTotal = 0;
-                let subjAttended = 0;
+
+                // Lectures (no batchId)
+                let lc = 0, lp = 0;
+                // Practicals (has batchId)
+                let pc = 0, pp = 0;
 
                 for (const record of subjRecords) {
                     const sr = record.records.find(r => r.studentId.toString() === sid);
                     if (sr) {
-                        subjTotal++;
-                        if (sr.status === 'present') subjAttended++;
+                        if (record.batchId) {
+                            pc++;
+                            if (sr.status === 'present') pp++;
+                        } else {
+                            lc++;
+                            if (sr.status === 'present') lp++;
+                        }
                     }
                 }
 
-                const subjPercentage = subjTotal > 0 ? Math.round((subjAttended / subjTotal) * 100) : 0;
-                subjectAttendance[subj] = subjPercentage;
+                const totalConducted = lc + pc;
+                const totalPresent = lp + pp;
+                const percentage = totalConducted > 0 ? Math.round((totalPresent / totalConducted) * 100) : 0;
+
+                subjectDetails[subj] = { lc, lp, pc, pp, totalConducted, totalPresent, percentage };
+                grandTotalConducted += totalConducted;
+                grandTotalPresent += totalPresent;
             }
 
-            const overallPercentage = timetableSubjects.length > 0
-                ? Math.round(timetableSubjects.reduce((sum, subj) => sum + (subjectAttendance[subj] || 0), 0) / timetableSubjects.length)
+            const overallPercentage = grandTotalConducted > 0
+                ? Math.round((grandTotalPresent / grandTotalConducted) * 100)
                 : 0;
 
             if (percentageRange) {
                 const [min, max] = percentageRange.split('-').map(Number);
                 if (subject) {
-                    const subjPct = subjectAttendance[subject] || 0;
+                    const subjPct = subjectDetails[subject]?.percentage || 0;
                     if (subjPct < min || subjPct > max) continue;
                 } else {
                     if (overallPercentage < min || overallPercentage > max) continue;
@@ -1452,7 +1499,9 @@ router.get('/defaulters/export', async (req, res) => {
                 rollNo: student.rollNo || '',
                 fullName: student.fullName,
                 batch: batchName,
-                subjectAttendance,
+                subjectDetails,
+                grandTotalConducted,
+                grandTotalPresent,
                 overallPercentage
             });
         }
@@ -1464,35 +1513,131 @@ router.get('/defaulters/export', async (req, res) => {
         const thinBorder = { style: 'thin' };
         const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
 
-        // Header rows
-        const titleRow = ws.addRow(['DEFAULTERS REPORT']);
-        titleRow.getCell(1).font = { bold: true, size: 14 };
-        ws.addRow([`Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
-        ws.addRow([`Class: ${classDoc?.name || 'N/A'}`]).font = { bold: true };
-        ws.addRow([`Year: ${classDoc?.year || 'N/A'}`]).font = { bold: true };
-        ws.addRow([]);
-
-        // Table header
-        const headerValues = ['Roll No', 'Student Name', 'Batch'];
-        for (const subj of timetableSubjects) {
-            headerValues.push(subj);
-        }
-        headerValues.push('Overall %');
-
-        const headerRow = ws.addRow(headerValues);
-        headerRow.eachCell((cell) => {
-            cell.font = { bold: true };
-            cell.border = allBorders;
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        // --- Legend Row ---
+        const legendRow = ws.addRow(['LP - LECTURES PRESENT', '', '', 'LC - LECTURES CONDUCTED', '', '', 'PP - PRACTICALS PRESENT', '', '', 'PC - PRACTICALS CONDUCTED']);
+        legendRow.eachCell(cell => {
+            cell.font = { bold: true, size: 9 };
+            cell.alignment = { horizontal: 'center' };
         });
 
-        // Data rows
+        // --- Title Row ---
+        const titleRow = ws.addRow([]);
+        // Build date range from attendance records
+        const allDates = allAttendance.map(r => new Date(r.date)).sort((a, b) => a - b);
+        const startDate = allDates.length > 0 ? allDates[0].toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase() : '';
+        const endDate = allDates.length > 0 ? allDates[allDates.length - 1].toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase() : '';
+        const dateRange = startDate && endDate ? `${startDate} - ${endDate}` : '';
+
+        // Merge and center the date range across the sheet
+        const totalHeaderCols = 3 + timetableSubjects.reduce((sum, subj) => {
+            let cols = 0;
+            if (subjectHasLectures[subj]) cols += 2; // LC, LP
+            if (subjectHasPracticals[subj]) cols += 2; // PC, PP
+            cols += 1; // %
+            return sum + cols;
+        }, 0) + 3; // Total Conducted, Total Present, Attendance %
+        titleRow.getCell(4).value = dateRange;
+        titleRow.getCell(4).font = { bold: true, size: 12 };
+        titleRow.getCell(4).alignment = { horizontal: 'center' };
+
+        // --- Info rows ---
+        ws.addRow([`Department: ${classDoc?.departmentId?.name || 'N/A'}`, '', '', `Class: ${classDoc?.name || 'N/A'}`, '', '', `Year: ${classDoc?.year || 'N/A'}`]).font = { bold: true };
+
+        // --- Build header rows (2 rows: subject name row + sub-column row) ---
+        // Row 1: Subject names spanning their sub-columns
+        const headerRow1Values = ['', '', ''];  // R.N., Name, Batch
+        const headerRow2Values = ['R. N.', 'Name Of The Student', 'Batch'];
+
+        // Track merge ranges for subject headers
+        const subjectMerges = [];
+        let currentCol = 4; // 1-indexed, starts after Roll No, Name, Batch
+
+        for (const subj of timetableSubjects) {
+            const startCol = currentCol;
+            if (subjectHasLectures[subj]) {
+                headerRow1Values.push(subj);
+                headerRow2Values.push('LP');
+                currentCol++;
+                headerRow1Values.push('');
+                headerRow2Values.push('LC');
+                currentCol++;
+            }
+            if (subjectHasPracticals[subj]) {
+                headerRow1Values.push('');
+                headerRow2Values.push('PP');
+                currentCol++;
+                headerRow1Values.push('');
+                headerRow2Values.push('PC');
+                currentCol++;
+            }
+            headerRow1Values.push('');
+            headerRow2Values.push('%');
+            const endCol = currentCol;
+            currentCol++;
+
+            if (endCol > startCol) {
+                subjectMerges.push({ start: startCol, end: endCol });
+            }
+        }
+
+        // Add total columns
+        headerRow1Values.push('Total', '', '');
+        headerRow2Values.push('Total Conducted', 'Total Present', 'Attendance %');
+
+        const hRow1 = ws.addRow(headerRow1Values);
+        const hRow2 = ws.addRow(headerRow2Values);
+
+        // Merge subject header cells in row 1
+        const hRow1Num = hRow1.number;
+        for (const merge of subjectMerges) {
+            ws.mergeCells(hRow1Num, merge.start, hRow1Num, merge.end);
+        }
+        // Merge total header
+        const totalStartCol = currentCol;
+        ws.mergeCells(hRow1Num, totalStartCol, hRow1Num, totalStartCol + 2);
+
+        // Style header rows
+        [hRow1, hRow2].forEach(row => {
+            row.eachCell((cell) => {
+                cell.font = { bold: true, size: 10 };
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            });
+        });
+
+        // Color sub-column headers (LP, LC green; PP, PC blue; % red)
+        hRow2.eachCell((cell, colNumber) => {
+            if (colNumber <= 3) return;
+            const val = cell.value?.toString();
+            if (val === 'LP' || val === 'LC') {
+                cell.font = { bold: true, size: 10, color: { argb: 'FF006100' } }; // Green
+            } else if (val === 'PP' || val === 'PC') {
+                cell.font = { bold: true, size: 10, color: { argb: 'FF0000FF' } }; // Blue
+            } else if (val === '%') {
+                cell.font = { bold: true, size: 10, color: { argb: 'FFFF0000' } }; // Red
+            }
+        });
+
+        // --- Data rows ---
         for (const s of studentData) {
             const rowValues = [s.rollNo, s.fullName, s.batch];
+
             for (const subj of timetableSubjects) {
-                rowValues.push(`${s.subjectAttendance[subj] || 0}%`);
+                const d = s.subjectDetails[subj] || { lc: 0, lp: 0, pc: 0, pp: 0, percentage: 0 };
+                if (subjectHasLectures[subj]) {
+                    rowValues.push(d.lp);
+                    rowValues.push(d.lc);
+                }
+                if (subjectHasPracticals[subj]) {
+                    rowValues.push(d.pp);
+                    rowValues.push(d.pc);
+                }
+                rowValues.push(`${d.percentage}%`);
             }
+
+            rowValues.push(s.grandTotalConducted);
+            rowValues.push(s.grandTotalPresent);
             rowValues.push(`${s.overallPercentage}%`);
 
             const row = ws.addRow(rowValues);
@@ -1500,25 +1645,31 @@ router.get('/defaulters/export', async (req, res) => {
                 cell.border = allBorders;
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // Red highlight for percentage cells below 75%
-                if (colNumber > 3) {
-                    const pctStr = cell.value?.toString().replace('%', '') || '0';
-                    const pctVal = parseInt(pctStr);
+                // Red highlight for percentage/attendance cells below 75%
+                const val = cell.value?.toString() || '';
+                if (val.endsWith('%')) {
+                    const pctVal = parseInt(val.replace('%', ''));
                     if (pctVal < 75) {
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
                         cell.font = { color: { argb: 'FF9C0006' }, bold: true };
                     }
                 }
             });
+            // Left-align name column
+            row.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
         }
 
         // Column widths
-        ws.getColumn(1).width = 10;
-        ws.getColumn(2).width = 30;
-        ws.getColumn(3).width = 15;
-        for (let i = 4; i <= 3 + timetableSubjects.length + 1; i++) {
-            ws.getColumn(i).width = 18;
+        ws.getColumn(1).width = 8;   // R.N.
+        ws.getColumn(2).width = 28;  // Name
+        ws.getColumn(3).width = 10;  // Batch
+        for (let i = 4; i <= totalHeaderCols; i++) {
+            ws.getColumn(i).width = 8;
         }
+        // Wider for total columns at the end
+        ws.getColumn(totalStartCol).width = 14;
+        ws.getColumn(totalStartCol + 1).width = 12;
+        ws.getColumn(totalStartCol + 2).width = 14;
 
         const buffer = await workbook.xlsx.writeBuffer();
         res.setHeader('Content-Disposition', `attachment; filename="CC_Defaulters_Report.xlsx"`);

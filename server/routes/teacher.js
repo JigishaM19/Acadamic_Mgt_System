@@ -581,7 +581,7 @@ router.delete('/attendance/:id', async (req, res) => {
 });
 
 // @route   GET /api/teacher/attendance/:classId/:subject/export
-// @desc    Export attendance sheet as Excel file
+// @desc    Export attendance sheet as Excel file (University format)
 router.get('/attendance/:classId/:subject/export', async (req, res) => {
     try {
         const ExcelJS = require('exceljs');
@@ -614,7 +614,7 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
                 students = await User.find({
                     _id: { $in: batch.studentIds },
                     role: 'student'
-                }).select('fullName firstName lastName fatherName username rollNo').sort({ lastName: 1 });
+                }).select('fullName firstName lastName fatherName username rollNo').sort({ rollNo: 1 });
             } else {
                 students = [];
             }
@@ -622,7 +622,7 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
             students = await User.find({
                 role: 'student',
                 classId
-            }).select('fullName firstName lastName fatherName username rollNo').sort({ lastName: 1 });
+            }).select('fullName firstName lastName fatherName username rollNo').sort({ rollNo: 1 });
         }
 
         // Get attendance records
@@ -648,7 +648,6 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const ws = workbook.addWorksheet('Attendance');
 
-        const totalCols = 5 + attendanceRecords.length;
         const thinBorder = { style: 'thin' };
         const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
 
@@ -671,7 +670,7 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
         ws.addRow([]);
 
         // Row 7: Column headers - Dates
-        const headerValues1 = ['R.No', 'Last Name', 'First Name', 'Middle Name', 'Batch'];
+        const headerValues1 = ['R.No', 'Name', 'Batch'];
         for (const record of attendanceRecords) {
             const dateStr = new Date(record.date).toLocaleDateString('en-IN', {
                 day: '2-digit',
@@ -680,6 +679,7 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
             });
             headerValues1.push(dateStr);
         }
+        headerValues1.push('Total Conducted', 'Total Present', 'Attendance %');
         const headerRow1 = ws.addRow(headerValues1);
         headerRow1.eachCell((cell) => {
             cell.font = { bold: true };
@@ -689,11 +689,12 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
         });
 
         // Row 8: Column headers - Time slots
-        const headerValues2 = ['', '', '', '', ''];
+        const headerValues2 = ['', '', ''];
         for (const record of attendanceRecords) {
             const slot = record.timeSlotId;
             headerValues2.push(slot ? `${slot.startTime} - ${slot.endTime}` : '');
         }
+        headerValues2.push('', '', '');
         const headerRow2 = ws.addRow(headerValues2);
         headerRow2.eachCell((cell, colNumber) => {
             cell.border = allBorders;
@@ -715,27 +716,35 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
             }
 
             const rowValues = [
-                idx + 1,
-                student.lastName || '',
-                student.firstName || '',
-                student.fatherName || '',
+                student.rollNo || (idx + 1),
+                student.fullName,
                 studentBatch
             ];
+
+            let totalConducted = 0;
+            let totalPresent = 0;
 
             for (const record of attendanceRecords) {
                 const studentRecord = record.records?.find(r =>
                     r.studentId.toString() === student._id.toString()
                 );
+                if (studentRecord) {
+                    totalConducted++;
+                    if (studentRecord.status === 'present') totalPresent++;
+                }
                 rowValues.push(studentRecord?.status === 'present' ? 'P' : 'A');
             }
+
+            const attendancePct = totalConducted > 0 ? Math.round((totalPresent / totalConducted) * 100) : 0;
+            rowValues.push(totalConducted, totalPresent, `${attendancePct}%`);
 
             const dataRow = ws.addRow(rowValues);
             dataRow.eachCell((cell, colNumber) => {
                 cell.border = allBorders;
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // Color P/A cells (columns after the first 5)
-                if (colNumber > 5) {
+                // Color P/A cells (columns after the first 3, before summary cols)
+                if (colNumber > 3 && colNumber <= 3 + attendanceRecords.length) {
                     const val = cell.value;
                     if (val === 'P') {
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }; // Light green
@@ -745,18 +754,31 @@ router.get('/attendance/:classId/:subject/export', async (req, res) => {
                         cell.font = { color: { argb: 'FF9C0006' }, bold: true };
                     }
                 }
+
+                // Red highlight for attendance % below 75%
+                if (colNumber === 3 + attendanceRecords.length + 3) {
+                    if (attendancePct < 75) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+                        cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+                    }
+                }
             });
+            // Left-align name
+            dataRow.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
         });
 
         // Set column widths
         ws.getColumn(1).width = 6;    // R.No
-        ws.getColumn(2).width = 16;   // Last Name
-        ws.getColumn(3).width = 16;   // First Name
-        ws.getColumn(4).width = 16;   // Middle Name
-        ws.getColumn(5).width = 12;   // Batch
-        for (let i = 6; i <= totalCols; i++) {
-            ws.getColumn(i).width = 14;
+        ws.getColumn(2).width = 28;   // Name
+        ws.getColumn(3).width = 10;   // Batch
+        for (let i = 4; i <= 3 + attendanceRecords.length; i++) {
+            ws.getColumn(i).width = 12;
         }
+        // Summary columns
+        const summaryStart = 4 + attendanceRecords.length;
+        ws.getColumn(summaryStart).width = 14;     // Total Conducted
+        ws.getColumn(summaryStart + 1).width = 12;  // Total Present
+        ws.getColumn(summaryStart + 2).width = 14;  // Attendance %
 
         // Write to buffer and send
         const buffer = await workbook.xlsx.writeBuffer();
@@ -2150,7 +2172,7 @@ router.get('/defaulters/:classId/:subject', async (req, res) => {
 });
 
 // @route   GET /api/teacher/defaulters/:classId/:subject/export
-// @desc    Export teacher defaulters list as Excel sheet
+// @desc    Export teacher defaulters list as Excel sheet (University format)
 router.get('/defaulters/:classId/:subject/export', async (req, res) => {
     try {
         const ExcelJS = require('exceljs');
@@ -2185,21 +2207,35 @@ router.get('/defaulters/:classId/:subject/export', async (req, res) => {
             teacherId
         });
 
+        // Determine if this subject has lectures vs practicals
+        const hasLectures = attendanceRecords.some(r => !r.batchId);
+        const hasPracticals = attendanceRecords.some(r => !!r.batchId);
+
         const studentData = [];
         for (const student of students) {
             const sid = student._id.toString();
-            let totalLectures = 0;
-            let attended = 0;
+
+            // Lectures (no batchId)
+            let lc = 0, lp = 0;
+            // Practicals (has batchId)
+            let pc = 0, pp = 0;
 
             for (const record of attendanceRecords) {
                 const sr = record.records.find(r => r.studentId.toString() === sid);
                 if (sr) {
-                    totalLectures++;
-                    if (sr.status === 'present') attended++;
+                    if (record.batchId) {
+                        pc++;
+                        if (sr.status === 'present') pp++;
+                    } else {
+                        lc++;
+                        if (sr.status === 'present') lp++;
+                    }
                 }
             }
 
-            const percentage = totalLectures > 0 ? Math.round((attended / totalLectures) * 100) : 0;
+            const totalConducted = lc + pc;
+            const totalPresent = lp + pp;
+            const percentage = totalConducted > 0 ? Math.round((totalPresent / totalConducted) * 100) : 0;
 
             if (percentageRange) {
                 const [min, max] = percentageRange.split('-').map(Number);
@@ -2220,6 +2256,9 @@ router.get('/defaulters/:classId/:subject/export', async (req, res) => {
                 rollNo: student.rollNo || '',
                 fullName: student.fullName,
                 batch: batchName,
+                lc, lp, pc, pp,
+                totalConducted,
+                totalPresent,
                 percentage
             });
         }
@@ -2231,42 +2270,146 @@ router.get('/defaulters/:classId/:subject/export', async (req, res) => {
         const thinBorder = { style: 'thin' };
         const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
 
-        // Header rows
-        const titleRow = ws.addRow(['DEFAULTERS REPORT']);
-        titleRow.getCell(1).font = { bold: true, size: 14 };
-        ws.addRow([`Department: ${classDoc?.departmentId?.name || 'N/A'}`]).font = { bold: true };
-        ws.addRow([`Class: ${classDoc?.name || 'N/A'}`]).font = { bold: true };
-        ws.addRow([`Year: ${classDoc?.year || 'N/A'}`]).font = { bold: true };
-        ws.addRow([`Subject: ${decodedSubject}`]).font = { bold: true };
-        ws.addRow([`Faculty: ${teacher?.fullName || 'N/A'}`]).font = { bold: true };
-        ws.addRow([]);
-
-        // Table header
-        const headerRow = ws.addRow(['Roll No', 'Student Name', 'Batch', 'Attendance %']);
-        headerRow.eachCell((cell) => {
-            cell.font = { bold: true };
-            cell.border = allBorders;
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        // --- Legend Row ---
+        const legendRow = ws.addRow(['LP - LECTURES PRESENT', '', '', 'LC - LECTURES CONDUCTED', '', '', 'PP - PRACTICALS PRESENT', '', '', 'PC - PRACTICALS CONDUCTED']);
+        legendRow.eachCell(cell => {
+            cell.font = { bold: true, size: 9 };
+            cell.alignment = { horizontal: 'center' };
         });
 
-        // Data rows
+        // --- Date Range Row ---
+        const allDates = attendanceRecords.map(r => new Date(r.date)).sort((a, b) => a - b);
+        const startDate = allDates.length > 0 ? allDates[0].toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase() : '';
+        const endDate = allDates.length > 0 ? allDates[allDates.length - 1].toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase() : '';
+        const dateRange = startDate && endDate ? `${startDate} - ${endDate}` : '';
+        const dateRow = ws.addRow([]);
+        dateRow.getCell(4).value = dateRange;
+        dateRow.getCell(4).font = { bold: true, size: 12 };
+        dateRow.getCell(4).alignment = { horizontal: 'center' };
+
+        // --- Info rows ---
+        ws.addRow([`Department: ${classDoc?.departmentId?.name || 'N/A'}`, '', '', `Class: ${classDoc?.name || 'N/A'}`, '', '', `Subject: ${decodedSubject}`, '', '', `Faculty: ${teacher?.fullName || 'N/A'}`]).font = { bold: true };
+
+        // --- Build header rows ---
+        const headerRow1Values = ['', '', ''];  // R.N., Name, Batch
+        const headerRow2Values = ['R. N.', 'Name Of The Student', 'Batch'];
+
+        // Subject-specific sub-columns
+        const subjectMerges = [];
+        let currentCol = 4;
+        const startCol = currentCol;
+
+        if (hasLectures) {
+            headerRow1Values.push(decodedSubject);
+            headerRow2Values.push('LP');
+            currentCol++;
+            headerRow1Values.push('');
+            headerRow2Values.push('LC');
+            currentCol++;
+        }
+        if (hasPracticals) {
+            headerRow1Values.push('');
+            headerRow2Values.push('PP');
+            currentCol++;
+            headerRow1Values.push('');
+            headerRow2Values.push('PC');
+            currentCol++;
+        }
+        headerRow1Values.push('');
+        headerRow2Values.push('%');
+        const endCol = currentCol;
+        currentCol++;
+
+        if (endCol > startCol) {
+            subjectMerges.push({ start: startCol, end: endCol });
+        }
+
+        // Total columns
+        headerRow1Values.push('Total', '', '');
+        headerRow2Values.push('Total Conducted', 'Total Present', 'Attendance %');
+
+        const hRow1 = ws.addRow(headerRow1Values);
+        const hRow2 = ws.addRow(headerRow2Values);
+
+        // Merge subject header cells
+        const hRow1Num = hRow1.number;
+        for (const merge of subjectMerges) {
+            ws.mergeCells(hRow1Num, merge.start, hRow1Num, merge.end);
+        }
+        // Merge total header
+        const totalStartCol = currentCol;
+        ws.mergeCells(hRow1Num, totalStartCol, hRow1Num, totalStartCol + 2);
+
+        // Style header rows
+        [hRow1, hRow2].forEach(row => {
+            row.eachCell((cell) => {
+                cell.font = { bold: true, size: 10 };
+                cell.border = allBorders;
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            });
+        });
+
+        // Color sub-column headers
+        hRow2.eachCell((cell, colNumber) => {
+            if (colNumber <= 3) return;
+            const val = cell.value?.toString();
+            if (val === 'LP' || val === 'LC') {
+                cell.font = { bold: true, size: 10, color: { argb: 'FF006100' } };
+            } else if (val === 'PP' || val === 'PC') {
+                cell.font = { bold: true, size: 10, color: { argb: 'FF0000FF' } };
+            } else if (val === '%') {
+                cell.font = { bold: true, size: 10, color: { argb: 'FFFF0000' } };
+            }
+        });
+
+        // --- Data rows ---
         for (const s of studentData) {
-            const row = ws.addRow([s.rollNo, s.fullName, s.batch, `${s.percentage}%`]);
+            const rowValues = [s.rollNo, s.fullName, s.batch];
+
+            if (hasLectures) {
+                rowValues.push(s.lp);
+                rowValues.push(s.lc);
+            }
+            if (hasPracticals) {
+                rowValues.push(s.pp);
+                rowValues.push(s.pc);
+            }
+            rowValues.push(`${s.percentage}%`);
+
+            rowValues.push(s.totalConducted);
+            rowValues.push(s.totalPresent);
+            rowValues.push(`${s.percentage}%`);
+
+            const row = ws.addRow(rowValues);
             row.eachCell((cell, colNumber) => {
                 cell.border = allBorders;
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                if (colNumber === 4 && s.percentage < 75) {
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
-                    cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+
+                const val = cell.value?.toString() || '';
+                if (val.endsWith('%')) {
+                    const pctVal = parseInt(val.replace('%', ''));
+                    if (pctVal < 75) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+                        cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+                    }
                 }
             });
+            // Left-align name
+            row.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
         }
 
-        ws.getColumn(1).width = 10;
-        ws.getColumn(2).width = 30;
-        ws.getColumn(3).width = 15;
-        ws.getColumn(4).width = 18;
+        // Column widths
+        ws.getColumn(1).width = 8;   // R.N.
+        ws.getColumn(2).width = 28;  // Name
+        ws.getColumn(3).width = 10;  // Batch
+        const totalColCount = currentCol + 2;
+        for (let i = 4; i <= totalColCount; i++) {
+            ws.getColumn(i).width = 8;
+        }
+        ws.getColumn(totalStartCol).width = 14;
+        ws.getColumn(totalStartCol + 1).width = 12;
+        ws.getColumn(totalStartCol + 2).width = 14;
 
         const buffer = await workbook.xlsx.writeBuffer();
         res.setHeader('Content-Disposition', `attachment; filename="${decodedSubject}_Defaulters_Report.xlsx"`);
