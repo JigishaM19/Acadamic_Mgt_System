@@ -48,9 +48,10 @@ router.post('/login', async (req, res) => {
         await user.save();
 
         // Generate token with activeRole
+        const secretKey = process.env.JWT_SECRET || 'unitracker_jwt_secret_key_2026_secure';
         const token = jwt.sign(
             { userId: user._id, activeRole: selectedRole },
-            process.env.JWT_SECRET,
+            secretKey,
             { expiresIn: '24h' }
         );
 
@@ -92,9 +93,10 @@ router.post('/select-role', async (req, res) => {
         user.activeRole = selectedRole;
         await user.save();
 
+        const secretKey = process.env.JWT_SECRET || 'unitracker_jwt_secret_key_2026_secure';
         const token = jwt.sign(
             { userId: user._id, activeRole: selectedRole },
-            process.env.JWT_SECRET,
+            secretKey,
             { expiresIn: '24h' }
         );
 
