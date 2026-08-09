@@ -19,7 +19,8 @@ app.use(express.json({ limit: '110mb' }));
 app.use(express.urlencoded({ limit: '110mb', extended: true }));
 // MongoDB Connection
 const { initAdmin } = require('./routes/auth');
-mongoose.connect(process.env.MONGODB_URI)
+const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://jigishadmhapasekar_db_user:jigishadmhapasekar_db_user@cluster0.kd8fxvy.mongodb.net/unitracker?retryWrites=true&w=majority';
+mongoose.connect(mongoUri)
     .then(async () => {
         console.log('MongoDB Connected');
         await initAdmin();
