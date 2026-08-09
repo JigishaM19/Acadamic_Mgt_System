@@ -2,6 +2,15 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const dns = require('dns');
+
+// Configure public DNS resolution for MongoDB Atlas SRV lookup
+try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {
+    console.log('DNS setServers notice:', e.message);
+}
+
 dotenv.config();
 const app = express();
 // Middleware
