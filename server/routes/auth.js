@@ -164,7 +164,18 @@ router.get('/me', auth, async (req, res) => {
     }
 });
 
-// Initialize admin user
+// @route   GET /api/auth/seed-admin
+// @desc    Explicitly seed admin user if missing
+router.get('/seed-admin', async (req, res) => {
+    try {
+        await initAdmin();
+        res.json({ message: 'Admin initialization checked/completed successfully.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to seed admin', error: error.message });
+    }
+});
+
+// Initialize admin user safely after DB connection
 const initAdmin = async () => {
     try {
         const adminExists = await User.findOne({ username: 'admin' });
@@ -182,12 +193,13 @@ const initAdmin = async () => {
             });
             await admin.save();
             console.log('Admin user created: admin/admin');
+        } else {
+            console.log('Admin user already exists');
         }
     } catch (error) {
         console.error('Error creating admin:', error);
     }
 };
 
-initAdmin();
-
 module.exports = router;
+module.exports.initAdmin = initAdmin;
