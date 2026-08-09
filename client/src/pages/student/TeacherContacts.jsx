@@ -35,7 +35,8 @@ const TeacherContacts = () => {
             if (allSearch) params.append('search', allSearch);
             if (filterDept) params.append('department', filterDept);
             if (filterRole) params.append('role', filterRole);
-            const response = await fetch(`http://localhost:5000/api/student/all-teachers?${params}`, {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const response = await fetch(`${API_BASE}/student/all-teachers?${params}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
@@ -77,7 +78,8 @@ const TeacherContacts = () => {
     const fetchTeachers = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:5000/api/student/teacher-contacts', {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const response = await fetch(`${API_BASE}/student/teacher-contacts`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
@@ -97,7 +99,8 @@ const TeacherContacts = () => {
         setDetailLoading(true);
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:5000/api/student/teacher-contacts/${teacherId}`, {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const response = await fetch(`${API_BASE}/student/teacher-contacts/${teacherId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();

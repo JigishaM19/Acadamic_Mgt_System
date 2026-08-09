@@ -17,7 +17,8 @@ const StudentAttendance = () => {
     const fetchAttendanceSummary = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:5000/api/student/attendance', {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const response = await fetch(`${API_BASE}/student/attendance`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -39,7 +40,8 @@ const StudentAttendance = () => {
         setHistoryLoading(true);
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:5000/api/student/attendance/${encodeURIComponent(subject)}`, {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const response = await fetch(`${API_BASE}/student/attendance/${encodeURIComponent(subject)}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }

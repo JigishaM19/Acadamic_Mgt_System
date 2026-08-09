@@ -22,7 +22,8 @@ const StudentComplaints = () => {
     const fetchComplaints = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:5000/api/student/complaints', {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const response = await fetch(`${API_BASE}/student/complaints`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -48,7 +49,8 @@ const StudentComplaints = () => {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:5000/api/student/complaints', {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const response = await fetch(`${API_BASE}/student/complaints`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

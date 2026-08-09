@@ -24,7 +24,8 @@ const StudentDashboard = () => {
     const fetchStats = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:5000/api/student/stats', {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const response = await fetch(`${API_BASE}/student/stats`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
